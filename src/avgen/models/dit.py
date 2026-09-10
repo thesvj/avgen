@@ -401,6 +401,29 @@ class VideoDiT(nn.Module):
         # between the target and an arbitrary random projection.
         init_linear(self.final_proj, zero=True)
 
+    @staticmethod
+    def _match_weight_dtype(
+        tokens: torch.Tensor, projection: nn.Linear
+    ) -> torch.Tensor:
+        """Cast token features to the embedding's dtype, and nothing else.
+
+        Under FSDP2 the parameters are in the compute dtype while the batch
+        arrives in float32. The framework deliberately does not cast forward
+        inputs wholesale — coordinates and noise levels are physical quantities
+        that lose meaning in bfloat16 (see
+        :meth:`avgen.parallel.precision.PrecisionConfig.fsdp_policy`) — so the
+        cast happens here, on the one tensor that should have it.
+
+        Args:
+            tokens: Token features from the stream.
+            projection: The patch embedding whose dtype to match.
+
+        Returns:
+            The features in the projection's dtype.
+        """
+        weight_dtype = projection.weight.dtype
+        return tokens if tokens.dtype == weight_dtype else tokens.to(weight_dtype)
+
     def encode_text(
         self, text: TextContext
     ) -> tuple[torch.Tensor | None, torch.Tensor | None]:
@@ -483,7 +506,9 @@ class VideoDiT(nn.Module):
         """
         video = inputs.video
         context, context_mask = self.encode_text(inputs.text)
-        hidden = self.patch_embed(video.masked())
+        hidden = self.patch_embed(
+            self._match_weight_dtype(video.masked(), self.patch_embed)
+        )
         modulation = self._stream_conditioning(
             video, embed=self.time_embed, modulation=self.modulation
         )
@@ -853,7 +878,11 @@ class AVDiT(VideoDiT):
         hidden = torch.cat(
             (
                 self.patch_embed(video.masked()),
-                self.audio_in_proj(self.audio_patch_embed(audio.masked())),
+                self.audio_in_proj(
+                    self.audio_patch_embed(
+                        self._match_weight_dtype(audio.masked(), self.audio_patch_embed)
+                    )
+                ),
             ),
             dim=1,
         )
@@ -906,7 +935,9 @@ class AVDiT(VideoDiT):
         audio_context, audio_context_mask = self._audio_context(inputs.text)
 
         video_hidden = self.patch_embed(video.masked())
-        audio_hidden = self.audio_patch_embed(audio.masked())
+        audio_hidden = self.audio_patch_embed(
+            self._match_weight_dtype(audio.masked(), self.audio_patch_embed)
+        )
         video_mod = self.modulation(self.time_embed(video.noise_level))
         audio_mod = self.audio_modulation(self.audio_time_embed(audio.noise_level))
         video_rope = self.rope(video.coords)

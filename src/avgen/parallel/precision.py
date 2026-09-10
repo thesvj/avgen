@@ -165,7 +165,22 @@ class PrecisionConfig:
             param_dtype=self.param,
             reduce_dtype=self.reduce,
             output_dtype=self.output,
-            cast_forward_inputs=True,
+            # False, and this is not a tuning choice — it is a correctness one.
+            #
+            # cast_forward_inputs=True casts *every* floating-point forward input
+            # to param_dtype. avgen's ModelInput is not a plain activation: it
+            # carries token features that should be cast alongside coordinates,
+            # noise levels and masks that must not be. Coordinates are physical
+            # time in seconds, and bfloat16 has eight mantissa bits — at a clip
+            # time of 30 seconds its resolution is 0.125 s, which is coarser than
+            # the 0.042 s between adjacent frames at 24 fps. Two neighbouring
+            # frames collapse onto the same coordinate and the rotary embedding
+            # stops being able to tell them apart, which quietly removes the
+            # entire basis of the physical-coordinate design on any long clip.
+            #
+            # With this off, each model casts its own token features at the
+            # patch-embedding boundary and the metadata stays exact.
+            cast_forward_inputs=False,
         )
 
     def autocast_dtype(self) -> torch.dtype | None:
