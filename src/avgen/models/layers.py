@@ -48,6 +48,7 @@ __all__ = [
     "MODULATION_CHUNKS",
     "AdaLNModulation",
     "CrossAttention",
+    "FusedRMSNorm",
     "SelfAttention",
     "SwiGLU",
     "TimestepEmbedding",
@@ -65,15 +66,68 @@ __all__ = [
 MODULATION_CHUNKS = 6
 
 
+class FusedRMSNorm(nn.RMSNorm):
+    """RMSNorm that keeps its fused kernel under autocast.
+
+    ``torch.rms_norm`` only dispatches to its fused implementation when the
+    input and the weight share a dtype. Under ``torch.autocast`` the activation
+    arrives as bfloat16 while the parameter stays float32, the dispatch falls
+    back to a composite of elementwise ops, and the layer becomes roughly ten
+    times slower — measured at 23.1 ms against 2.4 ms for a
+    ``(4, 16384, 2048)`` activation on an Ada card. At three norms per block
+    that is seconds per forward pass on a deep model.
+
+    FSDP2 hides this, because its mixed-precision policy casts parameters to the
+    compute dtype before the forward runs. Single-device training, gradient-
+    accumulation microbatches on one GPU, and evaluation all use plain autocast,
+    where nothing casts the weight — so the slow path is exactly the one people
+    hit while developing, and the fast path is the one they benchmark.
+
+    Casting the weight to the activation dtype restores the fused kernel. The
+    cast is a no-op when the dtypes already agree, so the FSDP path is untouched.
+
+    **This is not numerically free, and the trade is deliberate.** Rounding the
+    gain to bfloat16 roughly doubles the error against an fp32 reference — from
+    about four bfloat16 units in the last place to about eight, measured at
+    0.0155 against 0.0300 on a unit-scale activation. That is the correct trade
+    for two reasons. First, it is what already happens in any distributed run:
+    FSDP2's mixed-precision policy stores the parameter in bfloat16, so the
+    fused path is what production numerics actually are, and the fp32-weight
+    path was the anomaly. Second, a norm gain is a learned scale near one, where
+    a 0.4% relative perturbation is far inside what the optimizer corrects
+    within a few steps.
+
+    If you need the fp32-weight numerics — a bit-exact comparison against a
+    reference implementation, say — run the model outside autocast, where the
+    activation is fp32 and the cast does nothing.
+    """
+
+    def forward(self, hidden: torch.Tensor) -> torch.Tensor:
+        """Normalise ``hidden``, matching the weight dtype to the input.
+
+        Args:
+            hidden: Activation to normalise.
+
+        Returns:
+            The normalised activation.
+        """
+        weight = self.weight
+        if weight is not None and weight.dtype != hidden.dtype:
+            weight = weight.to(hidden.dtype)
+        return F.rms_norm(hidden, self.normalized_shape, weight, self.eps)
+
+
 def rms_norm(width: int, *, eps: float = 1e-6) -> nn.RMSNorm:
     """Build the normalisation layer used everywhere in the model.
 
     RMSNorm rather than LayerNorm: it drops the mean subtraction, which is one
     fewer reduction over a ``(batch, 100k, width)`` activation, and matches the
-    normalisation every recent video and language tower uses. ``torch.nn.RMSNorm``
-    rather than a hand-rolled one: it has a fused kernel, it is what
-    ``SequenceParallel`` knows how to shard, and a hand-rolled copy is one more
-    place for an epsilon to drift.
+    normalisation every recent video and language tower uses.
+
+    :class:`FusedRMSNorm` rather than ``nn.RMSNorm`` directly: it subclasses it,
+    so ``SequenceParallel`` still knows how to shard it and the state-dict keys
+    are unchanged, but it keeps the fused kernel under autocast. See that class
+    for the measurement.
 
     Args:
         width: Normalised feature width.
@@ -84,7 +138,7 @@ def rms_norm(width: int, *, eps: float = 1e-6) -> nn.RMSNorm:
     Returns:
         The normalisation module.
     """
-    return nn.RMSNorm(width, eps=eps)
+    return FusedRMSNorm(width, eps=eps)
 
 
 def init_linear(layer: nn.Linear, *, std: float = 0.02, zero: bool = False) -> None:
