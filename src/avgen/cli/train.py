@@ -48,7 +48,11 @@ def _run_loop(configuration: Any) -> None:
         RuntimeError: If a required subsystem is unavailable; the message names
             the contract that declares it.
     """
-    from avgen.cli._wiring import build_training_stack, require_subsystem
+    from avgen.cli._wiring import (
+        build_trainer_config,
+        build_training_stack,
+        require_subsystem,
+    )
 
     stack = build_training_stack(configuration)
     if configuration.checkpoint.resume:
@@ -56,15 +60,26 @@ def _run_loop(configuration: Any) -> None:
         load_checkpoint(
             configuration.checkpoint.resume, stack.state, parallel=stack.parallel
         )
-    trainer_config_class = require_subsystem("avgen.train.trainer", "TrainerConfig")
     trainer_class = require_subsystem("avgen.train.trainer", "Trainer")
     trainer = trainer_class(
         stack.state,
         stack.objective,
         stack.parallel,
-        trainer_config_class(),
+        build_trainer_config(
+            configuration,
+            accumulation=stack.gradient_accumulation,
+            data_world=stack.data_world,
+        ),
+        logger=stack.logger,
     )
-    trainer.fit(stack.loader, total_steps=configuration.train.steps)
+    try:
+        trainer.fit(stack.source, total_steps=configuration.train.steps)
+    finally:
+        # Close the logger even on an interrupt: a jsonl sink with an unflushed
+        # tail loses the last metrics, which are the ones you wanted.
+        close = getattr(stack.logger, "close", None)
+        if callable(close):
+            close()
 
 
 def add_parser(subparsers: Any) -> argparse.ArgumentParser:

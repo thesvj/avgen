@@ -702,7 +702,26 @@ def _prefetch(source: Iterator[MediaBatch], *, depth: int) -> Iterator[MediaBatc
         # Tell the producer to stop and drain whatever it already queued, so the
         # thread cannot block forever on a full queue when the consumer walks
         # away mid-epoch (an early `break`, or an exception in the training step).
+        #
+        # Draining once is not enough, and the failure is nasty. The producer may
+        # be blocked inside `channel.put` at the moment we drain; it then wakes,
+        # puts one more batch, and only notices `stop` on the following
+        # iteration. If the generator has already returned by then, a live daemon
+        # thread is still holding memory-mapped shard tensors when the
+        # interpreter tears down, and the C++ runtime aborts the process with
+        # "terminate called without an active exception" — exit code 134 after a
+        # training run that actually succeeded. Any scheduler or CI job reads
+        # that as a failed job.
+        #
+        # So drain *and* join: keep making room until the thread has genuinely
+        # finished. This terminates because the producer breaks out of its loop
+        # on the first `stop` check after its pending put completes.
         stop.set()
+        while worker.is_alive():
+            try:
+                channel.get_nowait()
+            except queue.Empty:
+                worker.join(timeout=0.05)
         while not channel.empty():
             channel.get_nowait()
 

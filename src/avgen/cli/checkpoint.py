@@ -235,11 +235,24 @@ def run(arguments: argparse.Namespace) -> int:
 
     if action == "convert":
         convert = require_subsystem("avgen.checkpoint", "convert")
-        destination = convert(path, arguments.output, world_size=arguments.world_size)
-        emit(f"  reshard for {arguments.world_size} ranks written to {destination}")
+        destination = convert(path, arguments.output, to="safetensors")
+        emit(f"  converted {path} -> {destination}")
+        emit(
+            "  note: a DCP checkpoint already reshards on load, so a run saved "
+            f"at one rank count resumes at another. --world-size "
+            f"{arguments.world_size} is recorded for reference; this command "
+            "changes the storage format, not the shard count."
+        )
         return 0
 
     if action == "export":
+        import torch
+
+        dtypes = {
+            "float32": torch.float32,
+            "bfloat16": torch.bfloat16,
+            "float16": torch.float16,
+        }
         if arguments.format == "safetensors":
             export = require_subsystem("avgen.checkpoint", "export_safetensors")
         else:
@@ -247,7 +260,7 @@ def run(arguments: argparse.Namespace) -> int:
         written = export(
             arguments.output,
             path,
-            dtype=arguments.dtype or None,
+            dtype=dtypes.get(arguments.dtype),
             metadata={"source": str(path), "ema": str(arguments.ema)},
         )
         emit(f"  exported {arguments.format} to {written or arguments.output}")

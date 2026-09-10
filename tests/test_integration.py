@@ -255,3 +255,59 @@ class TestConditioningTasks:
             loss = float(output.loss)
             assert loss == loss, f"{mode.name} produced a non-finite loss"
             assert loss > 0.0
+
+
+class TestLoaderShutdown:
+    """The prefetch thread must be gone before the interpreter tears down.
+
+    This can only be observed from a separate process. A daemon thread still
+    holding memory-mapped shard tensors at teardown makes the C++ runtime abort
+    with "terminate called without an active exception" and exit code 134 — after
+    a training run that actually succeeded. Every scheduler and CI system reads
+    that as a failed job, so the exit code is the thing under test, not the
+    output.
+    """
+
+    def test_early_break_leaves_no_live_thread(self, tmp_path) -> None:
+        import subprocess
+        import sys
+        import textwrap
+
+        script = textwrap.dedent(
+            f"""
+            from pathlib import Path
+            from avgen.data import (
+                ConcatShardReader,
+                ShardReader,
+                SyntheticConfig,
+                SyntheticSource,
+                build_loader,
+                write_shard,
+            )
+
+            shard = Path({str(tmp_path / "shard")!r})
+            source = SyntheticSource(
+                SyntheticConfig(
+                    seed=0, num_samples=16, frames=4, height=4, width=4,
+                    audio_frames=0, text_tokens=4, text_width=16,
+                )
+            )
+            write_shard(shard, [source[i] for i in range(16)])
+            store = ConcatShardReader([ShardReader(shard)])
+
+            # Break while the producer is mid-put: this is what used to leave a
+            # live daemon thread behind.
+            for _ in build_loader(store, batch_size=2):
+                break
+            print("ok")
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, timeout=180
+        )
+        assert result.returncode == 0, (
+            f"loader shutdown aborted the interpreter (exit {result.returncode}); "
+            f"stderr: {result.stderr[-400:]}"
+        )
+        assert "terminate called" not in result.stderr
+        assert "ok" in result.stdout

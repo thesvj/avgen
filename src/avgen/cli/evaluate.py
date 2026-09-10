@@ -266,13 +266,8 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
     """
     import functools
 
-    from avgen.cli._wiring import require_subsystem
-    from avgen.eval import (
-        EvalBatch,
-        EvalPin,
-        run_eval_suite,
-        shard_prompts,
-    )
+    from avgen.cli._wiring import build_generation_pipeline
+    from avgen.eval import EvalBatch, EvalPin, run_eval_suite, shard_prompts
 
     settings = configuration.eval
     prompts = _load_prompts(settings)
@@ -295,15 +290,7 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
 
     local_prompts = shard_prompts(prompts, data_rank=data_rank, data_world=data_world)
 
-    pipeline_class = require_subsystem("avgen.infer.pipeline", "GenerationPipeline")
-    from_checkpoint = getattr(pipeline_class, "from_checkpoint", None)
-    if from_checkpoint is None:
-        raise RuntimeError(
-            "avgen.infer.GenerationPipeline has no from_checkpoint constructor; "
-            "CONTRACTS.md §4 declares the pipeline but not how it loads a "
-            "checkpoint."
-        )
-    pipeline = from_checkpoint(arguments.checkpoint, config=configuration)
+    pipeline = build_generation_pipeline(configuration, arguments.checkpoint)
 
     def batches() -> Any:
         size = max(1, settings.batch_size)

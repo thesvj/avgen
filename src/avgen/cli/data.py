@@ -45,7 +45,14 @@ from avgen.cli._common import (
     table,
 )
 
-__all__ = ["add_parser", "run"]
+__all__ = ["add_parser", "run", "shard_directories"]
+
+
+def _shape(descriptor: Any, fields: tuple[str, ...]) -> str:
+    """Render selected descriptor dimensions as a compact ``a x b x c``."""
+    if descriptor is None:
+        return "?"
+    return "x".join(str(getattr(descriptor, name, "?")) for name in fields)
 
 
 def add_parser(subparsers: Any) -> argparse.ArgumentParser:
@@ -175,34 +182,18 @@ def run(arguments: argparse.Namespace) -> int:
             "avgen data needs an action: synthesize, shard, inspect, or validate"
         )
 
-    from avgen.cli._wiring import require_subsystem
-
     if action == "synthesize":
-        configuration = load_run_config(arguments)
-        source_class = require_subsystem("avgen.data.synthetic", "SyntheticSource")
-        writer = require_subsystem("avgen.data.shard", "write_shard")
-        destination = Path(arguments.output)
-        destination.mkdir(parents=True, exist_ok=True)
-        source = source_class(configuration.data, seed=arguments.seed)
-        written = writer(destination, source, limit=arguments.samples)
-        emit(rule("avgen data synthesize", character="="))
-        emit(f"  wrote {arguments.samples} samples to {destination}")
-        emit(f"  shards: {written}")
-        emit()
-        emit("  point a config at it with:")
-        emit("      avgen train --config configs/train/smoke_cpu.yaml \\")
-        emit(f"          data.source=latent_shards data.root={destination}")
-        return 0
+        return _synthesize(arguments)
 
     if action == "shard":
-        writer = require_subsystem("avgen.data.shard", "write_shard")
-        written = writer(
-            Path(arguments.output),
-            Path(arguments.input),
-            samples_per_shard=arguments.samples_per_shard,
+        return fail(
+            "avgen data shard packs a directory of ALREADY ENCODED latents, and "
+            "the encode step is dataset-specific — avgen ships no reader for "
+            "your layout and will not guess at one. Build a list of "
+            "avgen.data.LatentSample in your own encode script and call "
+            "avgen.data.write_shard(path, samples); 'avgen data synthesize' "
+            "writes a shard set in exactly that format to copy from."
         )
-        emit(f"  wrote {written} to {arguments.output}")
-        return 0
 
     path = Path(arguments.path)
     if not path.exists():
@@ -215,44 +206,144 @@ def run(arguments: argparse.Namespace) -> int:
     return fail(f"unknown data action {action!r}")
 
 
+def _synthesize(arguments: argparse.Namespace) -> int:
+    """Write a deterministic synthetic shard set.
+
+    It goes through the same ``write_shard`` path a real encode pipeline uses,
+    so the result is a genuine shard set — manifest, sha256, atomic commit —
+    rather than a special case the loader has to know about. That is what makes
+    a smoke run over it a real test of the data path rather than a test of a
+    shortcut.
+
+    Args:
+        arguments: Parsed command-line arguments.
+
+    Returns:
+        A process exit code.
+    """
+    from avgen.cli._wiring import build_source, require_subsystem
+
+    configuration = load_run_config(arguments)
+    write_shard = require_subsystem("avgen.data.shard", "write_shard")
+    build_latent_sample = require_subsystem("avgen.data", "build_latent_sample")
+
+    destination = Path(arguments.output)
+    destination.mkdir(parents=True, exist_ok=True)
+    source = build_source(configuration)
+
+    samples: list[Any] = []
+    for batch in source:
+        spec = batch.spec
+        for index in range(int(batch.video.shape[0])):
+            samples.append(
+                build_latent_sample(
+                    sample_id=int(batch.sample_ids[index]),
+                    video=batch.video[index],
+                    video_timebase=(
+                        spec.video_timebase_num,
+                        spec.video_timebase_den,
+                    ),
+                    video_codec_id=spec.video_codec_id,
+                    audio=batch.audio[index] if spec.has_audio else None,
+                    audio_timebase=(
+                        spec.audio_timebase_num,
+                        spec.audio_timebase_den,
+                    ),
+                    audio_codec_id=spec.audio_codec_id,
+                    text=batch.text[index] if spec.has_text else None,
+                    text_mask=batch.text_mask[index] if spec.has_text else None,
+                    text_width=spec.text_shape[-1] if spec.has_text else 1,
+                )
+            )
+            if len(samples) >= arguments.samples:
+                break
+        if len(samples) >= arguments.samples:
+            break
+    if not samples:
+        return fail("the configured data source produced no samples")
+
+    manifest = write_shard(destination / "shard-00000", samples)
+    emit(rule("avgen data synthesize", character="="))
+    emit(f"  wrote {len(samples)} samples to {destination}")
+    emit(
+        f"  sha256 {getattr(manifest, 'data_sha256', '?')[:16]}... "
+        f"({getattr(manifest, 'data_bytes', 0):,} bytes)"
+    )
+    emit()
+    emit("  point a config at it with:")
+    emit("      avgen train --config configs/train/smoke_cpu.yaml \\")
+    emit(f"          data.source=latent_shards data.root={destination}")
+    return 0
+
+
+def shard_directories(root: Path) -> list[Path]:
+    """Find committed shards under a root.
+
+    A shard is a *directory* — container, manifest, and a COMMIT marker written
+    in that order — not a single file. Discovery keys on the marker rather than
+    on the container, so a shard whose writer was preempted mid-write is simply
+    not found. Globbing for the container instead would surface exactly the
+    half-written shards the atomic commit exists to hide.
+
+    Args:
+        root: Directory to search, recursively.
+
+    Returns:
+        Committed shard directories, sorted.
+    """
+    from avgen.data.shard import COMMIT_FILENAME
+
+    if (root / COMMIT_FILENAME).is_file():
+        return [root]
+    return sorted(marker.parent for marker in root.glob(f"**/{COMMIT_FILENAME}"))
+
+
 def _inspect(path: Path) -> int:
     """Print a shard directory's contents."""
     from avgen.cli._wiring import require_subsystem
 
-    read_shard = require_subsystem("avgen.data.shard", "read_shard")
-    shards = sorted(path.glob("*.safetensors"))
+    shard_reader = require_subsystem("avgen.data.shard", "ShardReader")
+    shards = shard_directories(path)
     if not shards:
         return fail(
-            f"{path} contains no .safetensors shards. If this is a directory of "
-            "raw media, encode it first — avgen trains on latents, not pixels."
+            f"{path} contains no committed shards. If this is a directory of "
+            "raw media, encode it first — avgen trains on latents, not pixels. "
+            "If a writer was interrupted, its uncommitted shard is deliberately "
+            "invisible here."
         )
 
     rows: list[dict[str, Any]] = []
     total = 0
     for shard in shards:
-        info = read_shard(shard, metadata_only=True)
-        count = int(info.get("samples", 0))
-        total += count
-        rows.append(
-            {
-                "shard": shard.name,
-                "samples": str(count),
-                "bucket": str(info.get("bucket_id", "?")),
-                "video": str(info.get("video_shape", "?")),
-                "audio": str(info.get("audio_shape", "?")),
-                "codec": str(info.get("video_codec_id", "?"))[:24],
-            }
-        )
+        # validate=False: this command reads metadata only, and hashing every
+        # payload would turn an inspection into a full validation pass.
+        reader = shard_reader(shard, validate=False)
+        try:
+            records = reader.manifest.records
+            total += len(records)
+            first = records[0].descriptor if records else None
+            rows.append(
+                {
+                    "shard": shard.name,
+                    "samples": str(len(records)),
+                    "video": _shape(first, ("video_frames", "height", "width")),
+                    "audio": _shape(first, ("audio_channels", "audio_frames")),
+                    "codec": str(getattr(first, "video_codec_id", "?"))[:24],
+                    "bytes": human_count(reader.manifest.data_bytes),
+                }
+            )
+        finally:
+            reader.close()
     emit(rule(f"shards in {path}", character="="))
     emit(
         table(
             [
                 ("shard", "shard"),
                 ("samples", "samples"),
-                ("bucket", "bucket"),
                 ("video", "video shape"),
                 ("audio", "audio shape"),
                 ("codec", "video codec"),
+                ("bytes", "payload"),
             ],
             rows,
         )
@@ -278,16 +369,45 @@ def _validate(path: Path, arguments: argparse.Namespace) -> int:
     """Verify manifest hashes and per-sample shapes."""
     from avgen.cli._wiring import require_subsystem
 
-    validate_shards = require_subsystem("avgen.data.shard", "validate_shards")
+    validate_shard = require_subsystem("avgen.data.shard", "validate_shard")
+    corruption = require_subsystem("avgen.data.shard", "ShardCorruptionError")
     buckets = None
     if arguments.config:
-        buckets = load_run_config(arguments).data.buckets
+        buckets = {b.name: b for b in load_run_config(arguments).data.buckets}
 
-    result = validate_shards(path, buckets=buckets, limit=arguments.sample or None)
-    failures = list(result.get("failures", ()))
+    shards = shard_directories(path)
+    if not shards:
+        return fail(f"{path} contains no committed shards")
+
+    failures: list[str] = []
+    samples = 0
+    for shard in shards:
+        try:
+            manifest = validate_shard(shard, check_data=True)
+        except corruption as error:
+            failures.append(f"{shard.name}: {error}")
+            continue
+        records = manifest.records
+        samples += len(records)
+        if buckets is None:
+            continue
+        # A shape that disagrees with every declared bucket means the loader
+        # will pad or crop it silently, which changes the token count and
+        # therefore the loss normalisation.
+        shapes = {
+            (r.descriptor.video_frames, r.descriptor.height, r.descriptor.width)
+            for r in records
+        }
+        allowed = {(b.frames, b.height, b.width) for b in buckets.values()}
+        for shape in shapes - allowed:
+            failures.append(
+                f"{shard.name}: video shape {shape} matches no configured "
+                f"bucket {sorted(allowed)}"
+            )
+
     emit(rule(f"validating {path}", character="="))
-    emit(f"  shards checked   {result.get('shards', 0)}")
-    emit(f"  samples checked  {human_count(result.get('samples', 0))}")
+    emit(f"  shards checked   {len(shards)}")
+    emit(f"  samples checked  {human_count(samples)}")
     emit(f"  failures         {len(failures)}")
     for failure in failures[:20]:
         emit(f"    - {failure}")

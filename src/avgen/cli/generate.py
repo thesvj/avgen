@@ -25,7 +25,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from avgen.cli._common import add_traceback_argument, emit, fail, rule
+from avgen.cli._common import add_traceback_argument, emit, rule
 
 __all__ = ["add_parser", "run"]
 
@@ -259,31 +259,48 @@ def run(arguments: argparse.Namespace) -> int:
     if arguments.print_settings:
         return 0
 
-    from avgen.cli._wiring import require_subsystem
+    from avgen.cli._wiring import build_generation_pipeline
 
-    pipeline_class = require_subsystem("avgen.infer.pipeline", "GenerationPipeline")
-    from_checkpoint = getattr(pipeline_class, "from_checkpoint", None)
-    if from_checkpoint is None:
-        return fail(
-            "avgen.infer.GenerationPipeline has no from_checkpoint constructor; "
-            "CONTRACTS.md §4 declares the pipeline but not how it is loaded "
-            "from a checkpoint. Build it yourself and call it directly until "
-            "that contract is added."
-        )
-
-    pipeline = from_checkpoint(arguments.checkpoint, config=configuration)
+    pipeline = build_generation_pipeline(configuration, arguments.checkpoint)
     media = pipeline(
         prompts,
         steps=settings["steps"],
         guidance=settings["guidance"],
         seed=settings["seed"],
-        negative_prompt=settings["negative_prompt"],
-        frames=settings["frames"],
+        negative_prompts=settings["negative_prompt"] or None,
+        num_frames=settings["frames"],
         height=settings["height"],
         width=settings["width"],
+        sampler=settings["sampler"],
     )
     output.parent.mkdir(parents=True, exist_ok=True)
-    written = media.save(output) if hasattr(media, "save") else output
+    save = getattr(media, "save", None)
+    written = save(output) if callable(save) else _save_tensor(media, output)
     emit()
     emit(f"  wrote {written}")
+    emit(
+        "  the sampling settings above are what make these samples mean "
+        "something; record them."
+    )
     return 0
+
+
+def _save_tensor(media: Any, output: Path) -> Path:
+    """Fall back to a raw tensor dump when the media object has no writer.
+
+    Writing a tensor is not a substitute for encoding a video, and the name says
+    so: a caller who gets a ``.pt`` back knows a container was not produced,
+    where a silently mis-encoded ``.mp4`` would not tell them anything.
+
+    Args:
+        media: The generated media.
+        output: Requested output path.
+
+    Returns:
+        The path actually written.
+    """
+    import torch
+
+    destination = output.with_suffix(".pt")
+    torch.save({"video": media.video, "prompts": list(media.prompts)}, destination)
+    return destination

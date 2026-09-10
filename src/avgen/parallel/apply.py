@@ -27,6 +27,7 @@ changes which blocks exist on this rank at all.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import torch
@@ -156,6 +157,7 @@ def parallelize(
     *,
     mesh: DeviceMesh | None = None,
     config: ParallelConfig | None = None,
+    adapt: Callable[[nn.Module], nn.Module] | None = None,
 ) -> ParallelModel:
     """Apply every configured parallelism transformation, in the correct order.
 
@@ -165,6 +167,14 @@ def parallelize(
         mesh: A pre-built mesh, or ``None`` to build one from ``dims``. Passing
             one lets the simulator supply a fake mesh.
         config: How to apply each transformation.
+        adapt: Optional hook invoked after tensor parallelism and before
+            activation checkpointing, compile and FSDP. This is the only correct
+            seam for injecting LoRA or a control adapter: the base weights are
+            already DTensors on the tensor-parallel mesh, so an adapter can
+            derive its own placements from them, and FSDP has not yet run, so the
+            new parameters are still picked up and gradient-reduced. Injecting
+            after FSDP leaves the adapter unmanaged and every rank silently
+            learns a different one.
 
     Returns:
         The transformed model together with the meshes the trainer will need.
@@ -190,6 +200,10 @@ def parallelize(
             f"tensor_parallel(tp={dims.tensor}, "
             f"sequence_parallel={settings.sequence_parallel})"
         )
+
+    if adapt is not None:
+        model = adapt(model)
+        applied.append("adapt")
 
     if settings.activation_checkpoint.enabled:
         apply_activation_checkpointing(

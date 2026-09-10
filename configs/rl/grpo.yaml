@@ -48,11 +48,17 @@ rl:
   sde_noise_scale: 0.7      # exploration is impossible without it — a purely
                             # deterministic sampler gives every group member the
                             # same trajectory and the advantage collapses to zero
-  rewards: []               # REQUIRED: name your reward models here, e.g.
-                            # [aesthetic, motion_quality]. With none configured
-                            # the advantage is identically zero and the run is
-                            # an expensive no-op.
-  reward_weights: []        # must be the same length as `rewards`, or empty
+  # Dependency-free defaults so this config is runnable as shipped. They are
+  # cheap proxies derived from avgen.eval, not preference models — good enough
+  # to verify the whole RL path end to end, not good enough to align a model.
+  # For a real run replace these with a learned reward (hps_v2, pick_score,
+  # video_score) and install `pip install 'avgen[rewards]'`.
+  #
+  # Never leave this empty: with no reward every sample in a group scores
+  # identically, the group-relative advantage is identically zero, and the run
+  # is an expensive no-op that looks like it is working.
+  rewards: [temporal_consistency, motion_magnitude]
+  reward_weights: [1.0, 0.5]   # must match `rewards` one-for-one, or be empty
 
 train:
   steps: 2000
