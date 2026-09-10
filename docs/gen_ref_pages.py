@@ -99,7 +99,8 @@ def write_reference_pages() -> list[tuple[str, ...]]:
             continue
         tail = Path(*parts[1:])
         doc_path = (
-            tail / "index.md" if relative.name == "__init__.py"
+            tail / "index.md"
+            if relative.name == "__init__.py"
             else tail.with_suffix(".md")
         )
         full_doc_path = REFERENCE_ROOT / doc_path

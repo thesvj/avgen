@@ -116,7 +116,7 @@ class TestTrainingLoop:
 
 class TestPatchifyRoundTripThroughModel:
     def test_model_output_matches_the_input_token_geometry(self) -> None:
-        source, state, _ = build_stack()
+        source, _state, _ = build_stack()
         batch = next(iter(source))
         patchifier = GridPatchifier()
         stream = patchifier.to_tokens(

@@ -228,7 +228,7 @@ class ControlAdapterConfig:
             )
 
 
-class ControlAdapter(nn.Module):
+class ControlAdapter(nn.Module):  # type: ignore[misc]
     """A ControlNet-style trainable side tower over a frozen base model.
 
     The tower is a deep copy of the base model's first ``num_blocks`` blocks.
@@ -287,11 +287,14 @@ class ControlAdapter(nn.Module):
         if config.model_width is not None:
             self._build_projections(config.model_width)
 
-    def _build_projections(self, model_width: int) -> None:
+    def _build_projections(self, model_width: int) -> tuple[nn.Linear, nn.ModuleList]:
         """Create the control input embedding and the zero output projections.
 
         Args:
             model_width: Hidden width of the base model.
+
+        Returns:
+            The control embedding and the zero-initialised output projections.
         """
         embed = nn.Linear(self.config.control_width, model_width)
         # Small but non-zero: the control signal must actually reach the tower.
@@ -301,24 +304,32 @@ class ControlAdapter(nn.Module):
         # to move off zero.
         nn.init.normal_(embed.weight, std=1.0 / math.sqrt(self.config.control_width))
         nn.init.zeros_(embed.bias)
-        self.control_embed = embed
-        self.projections = nn.ModuleList(
+        projections = nn.ModuleList(
             _zero_linear(model_width, model_width) for _ in self.injection_indices
         )
+        self.control_embed = embed
+        self.projections = projections
+        return embed, projections
 
-    def _ensure_built(self, hidden: torch.Tensor) -> None:
-        """Lazily create projections once the model width is observable.
+    def _ensure_built(self, hidden: torch.Tensor) -> tuple[nn.Linear, nn.ModuleList]:
+        """Build the projections on first use, once the model width is known.
+
+        The width is read from the hidden state rather than required up front,
+        because the base model's config is not something this module can see and
+        demanding it duplicates a number that would then be able to disagree.
 
         Args:
             hidden: The hidden state entering the base stack.
+
+        Returns:
+            The control embedding and the output projections.
         """
-        if self.projections is not None:
-            return
-        self._build_projections(int(hidden.shape[-1]))
-        assert self.control_embed is not None
-        self.control_embed.to(device=hidden.device, dtype=hidden.dtype)
-        assert self.projections is not None
-        self.projections.to(device=hidden.device, dtype=hidden.dtype)
+        embed, projections = self.control_embed, self.projections
+        if embed is None or projections is None:
+            embed, projections = self._build_projections(int(hidden.shape[-1]))
+            embed.to(device=hidden.device, dtype=hidden.dtype)
+            projections.to(device=hidden.device, dtype=hidden.dtype)
+        return embed, projections
 
     def forward(
         self,
@@ -347,21 +358,19 @@ class ControlAdapter(nn.Module):
             ValueError: If the control tokens do not align with the hidden
                 state in batch or length.
         """
-        self._ensure_built(hidden)
-        assert self.control_embed is not None
-        assert self.projections is not None
+        control_embed, projections = self._ensure_built(hidden)
         if control.shape[:2] != hidden.shape[:2]:
             raise ValueError(
                 f"control tokens must align with the base sequence "
                 f"{tuple(hidden.shape[:2])}; got {tuple(control.shape[:2])}"
             )
-        state = hidden + self.control_embed(control.to(hidden.dtype))
+        state = hidden + control_embed(control.to(hidden.dtype))
         residuals: list[torch.Tensor] = []
         projection_index = 0
         for index, block in enumerate(self.blocks):
             state, _ = _split_output(block(state, *block_args, **block_kwargs))
             if index in self.injection_indices:
-                projection = self.projections[projection_index]
+                projection = projections[projection_index]
                 residuals.append(projection(state) * self.config.conditioning_scale)
                 projection_index += 1
         return residuals
@@ -461,7 +470,7 @@ class IPAdapterConfig:
             raise ValueError(f"scale must be non-negative; got {self.scale!r}")
 
 
-class IPAdapter(nn.Module):
+class IPAdapter(nn.Module):  # type: ignore[misc]
     """Decoupled image-prompt cross-attention over a frozen base.
 
     For each targeted block, the image prompt gets its own ``k`` and ``v``

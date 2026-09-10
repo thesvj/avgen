@@ -84,9 +84,7 @@ def to_x0(x_t: torch.Tensor, velocity: torch.Tensor, sigma: float) -> torch.Tens
     return x_t - sigma * velocity
 
 
-def to_epsilon(
-    x_t: torch.Tensor, velocity: torch.Tensor, sigma: float
-) -> torch.Tensor:
+def to_epsilon(x_t: torch.Tensor, velocity: torch.Tensor, sigma: float) -> torch.Tensor:
     """Convert a velocity prediction into a noise prediction.
 
     Args:

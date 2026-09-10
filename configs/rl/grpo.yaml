@@ -1,0 +1,89 @@
+# GRPO — group-relative policy optimisation over an SDE-converted sampler.
+#
+# How it works, in one paragraph: the deterministic ODE sampler is converted to
+# an SDE so the policy has something to explore with; a group of `group_size`
+# samples is rolled out per prompt; each sample's advantage is its reward minus
+# the group mean, so no value network is needed; the policy update is clipped
+# PPO-style and penalised by a KL to a frozen reference.
+#
+# The three settings that decide the outcome:
+#
+#   group_size       The advantage is computed WITHIN the group, so a group of
+#                    one has zero variance signal and learns nothing. Four is
+#                    the practical floor; eight is the usual choice. Cost is
+#                    linear in it.
+#
+#   sampler_steps    The dominant cost of the whole method — every update needs
+#                    group_size x sampler_steps forward passes. It is the first
+#                    thing to cut, and 16 steps is usually enough for the
+#                    reward to rank samples correctly even if the samples
+#                    themselves are not final quality.
+#
+#   kl_coefficient   The knob that decides whether you get reward learning or
+#                    reward hacking. Too low and the policy finds the reward
+#                    model's blind spots within a few hundred steps, producing
+#                    samples that score wonderfully and look wrong. Watch the
+#                    KL, not only the reward.
+#
+# mixgrpo_window trades a little bias for a large speedup by optimising a
+# sliding window of consecutive denoising steps instead of all of them.
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-grpo
+output_dir: runs/dit2b-grpo
+
+rl:
+  algorithm: grpo
+  reference_checkpoint: ""  # empty snapshots the starting weights as the
+                            # reference; the KL is measured against that
+  group_size: 8
+  sampler_steps: 16
+  kl_coefficient: 0.04
+  clip_range: 0.2
+  advantage_normalize: true
+  mixgrpo_window: 4         # 0 optimises every denoising step: correct and
+                            # expensive
+  sde_noise_scale: 0.7      # exploration is impossible without it — a purely
+                            # deterministic sampler gives every group member the
+                            # same trajectory and the advantage collapses to zero
+  rewards: []               # REQUIRED: name your reward models here, e.g.
+                            # [aesthetic, motion_quality]. With none configured
+                            # the advantage is identically zero and the run is
+                            # an expensive no-op.
+  reward_weights: []        # must be the same length as `rewards`, or empty
+
+train:
+  steps: 2000
+  global_batch_size: 8      # prompts per step; each expands to group_size
+                            # rollouts, so the real forward-pass count is 8x
+                            # this
+  micro_batch_size: 1
+  lr: 1.0e-6                # far lower than supervised training: RL updates are
+                            # high-variance and a large step can destroy a
+                            # pretrained policy in a handful of updates
+  weight_decay: 0.0
+  schedule: constant
+  warmup_steps: 50
+  max_grad_norm: 1.0
+  ema_decay: 0.0
+  log_every: 5
+
+parallel:
+  dp_shard: -1
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+
+checkpoint:
+  save_every: 200           # RL runs go wrong quickly and recover slowly; save
+                            # often so a good policy can be recovered
+  keep_last_n: 5
+
+eval:
+  metrics: [temporal_consistency, motion_magnitude, static_frames]
+  steps: 30
+  guidance: 5.0

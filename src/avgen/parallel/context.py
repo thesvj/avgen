@@ -48,6 +48,7 @@ from avgen.core.tokens import TokenStream
 __all__ = [
     "context_parallel_region",
     "gather_stream",
+    "gather_tokens",
     "pad_to_multiple",
     "shard_stream",
     "sharded_length",

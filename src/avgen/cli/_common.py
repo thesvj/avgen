@@ -163,7 +163,14 @@ def human_count(value: float) -> str:
     Returns:
         A short string, e.g. ``"2.05 B"``.
     """
-    for threshold, suffix in ((1e12, "T"), (1e9, "B"), (1e6, "M"), (1e3, "K")):
+    for threshold, suffix in (
+        (1e18, "E"),
+        (1e15, "P"),
+        (1e12, "T"),
+        (1e9, "B"),
+        (1e6, "M"),
+        (1e3, "K"),
+    ):
         if abs(value) >= threshold:
             return f"{value / threshold:.2f} {suffix}"
     return f"{value:.0f}"

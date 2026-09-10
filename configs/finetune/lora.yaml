@@ -1,0 +1,73 @@
+# LoRA fine-tuning — adapt a base model with a small number of new parameters.
+#
+# The knobs that matter, in order:
+#
+#   lora_rank    The dominant quality/size trade-off. 16-64 covers most of the
+#                useful range for a video DiT; below 8 the adapter cannot
+#                represent much, above 128 you are close to full fine-tuning
+#                without its advantages.
+#
+#   lora_alpha   The effective scale is alpha/rank. Raising rank without raising
+#                alpha quietly LOWERS the adapter's influence, which is the
+#                single most common LoRA mistake. Keeping alpha == rank holds
+#                the scale at 1 as rank changes.
+#
+#   lr           Roughly 10x the pretraining LR. The adapter starts at zero and
+#                has far fewer parameters; a pretraining LR barely moves it.
+#
+#   ema_decay    Off. An EMA over a short adapter run is mostly the
+#                initialisation, and it doubles adapter memory for nothing.
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-lora
+output_dir: runs/dit2b-lora
+
+finetune:
+  mode: lora
+  base_checkpoint: ""     # REQUIRED. Set it here or pass
+                          # finetune.base_checkpoint=<path> on the command line.
+  lora_rank: 32
+  lora_alpha: 32.0        # alpha == rank keeps the effective scale at 1
+  lora_dropout: 0.0
+  lora_targets:           # attention and feed-forward projections. Adding the
+                          # patch embedding or the final projection rarely helps
+                          # and costs disproportionate parameters.
+    - q_proj
+    - k_proj
+    - v_proj
+    - out_proj
+    - gate_proj
+    - up_proj
+    - down_proj
+  use_dora: false         # weight-decomposed LoRA closes much of the gap to
+                          # full fine-tuning at the cost of a slower step
+  train_norms: true       # cheap, and usually worth a visible quality gain
+
+train:
+  steps: 4000
+  global_batch_size: 16
+  micro_batch_size: 2
+  lr: 1.0e-4              # ~10x a pretraining LR; the adapter starts at zero
+  weight_decay: 0.0       # decay on an adapter pulls it back toward the base
+                          # model, which is the opposite of the intent
+  schedule: constant      # short runs do not benefit from a decay schedule
+  warmup_steps: 100
+  ema_decay: 0.0
+  log_every: 10
+
+parallel:
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+  fsdp:
+    ignore_frozen_params: true   # the frozen base is nearly all the parameters;
+                                 # sharding it still pays the all-gather cost
+                                 # every step for weights that never change
+
+checkpoint:
+  save_every: 1000
+  keep_last_n: 3

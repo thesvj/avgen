@@ -209,9 +209,7 @@ def shard_prompts(
     if data_world < 1:
         raise ValueError(f"data_world must be >= 1; got {data_world!r}")
     if not 0 <= data_rank < data_world:
-        raise ValueError(
-            f"data_rank must be in [0, {data_world}); got {data_rank!r}"
-        )
+        raise ValueError(f"data_rank must be in [0, {data_world}); got {data_rank!r}")
     return tuple(prompts[data_rank::data_world])
 
 

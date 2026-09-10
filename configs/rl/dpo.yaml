@@ -1,0 +1,55 @@
+# Diffusion-DPO — pairwise preference optimisation, no reward model, no rollouts.
+#
+# DPO is the cheaper of the two post-training methods because it never samples:
+# it trains directly on (preferred, rejected) pairs already in the dataset, so a
+# step costs about what a supervised step costs. The trade is that it can only
+# learn what is in the preference data, while GRPO can explore.
+#
+# dpo_beta is the temperature. Larger keeps the policy closer to the reference
+# and learns less; smaller learns faster and drifts further, with the usual
+# failure being a policy that satisfies the preference signal and loses general
+# quality. 0.1 is a reasonable starting point; sweep it before trusting it.
+#
+# The dataset must supply preference pairs. The template below leaves that to
+# your own shard layout — avgen ships no preference data and names no source.
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-dpo
+output_dir: runs/dit2b-dpo
+
+rl:
+  algorithm: dpo
+  reference_checkpoint: ""  # empty snapshots the starting weights; the DPO loss
+                            # is defined relative to a reference and there is no
+                            # meaningful version without one
+  dpo_beta: 0.1
+  sampler_steps: 1          # unused by DPO, which never rolls out
+  group_size: 2             # a preference pair
+  kl_coefficient: 0.0       # the beta term already constrains drift; a second
+                            # KL penalty double-counts it
+
+train:
+  steps: 5000
+  global_batch_size: 16     # preference PAIRS, so 32 forward passes per step
+  micro_batch_size: 1
+  lr: 5.0e-7
+  weight_decay: 0.0
+  schedule: constant
+  warmup_steps: 100
+  max_grad_norm: 1.0
+  ema_decay: 0.0
+  log_every: 10
+
+parallel:
+  dp_shard: -1
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+
+checkpoint:
+  save_every: 500
+  keep_last_n: 5

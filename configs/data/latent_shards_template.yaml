@@ -1,0 +1,70 @@
+# TEMPLATE — pre-encoded latent shards. Fill in the blanks.
+#
+# avgen trains on latents, never on pixels. Encoding is an offline step owned by
+# whatever pipeline produces your data; `avgen data shard` packs the results
+# into mmap + safetensors shards with a sha256 manifest and an atomic commit.
+#
+# Nothing dataset-specific ships with avgen: no names, no sources, no mixture
+# weights, no tuned thresholds. Everything below is a blank or a neutral default.
+#
+# Before a long run:
+#   avgen data validate <root> --config <your config>
+# A shard set that is a fraction of a percent corrupt trains without complaint
+# and produces a model that is slightly worse for no visible reason.
+
+data:
+  source: latent_shards
+
+  # Point these at your own storage. ${env:VAR} reads the environment, and
+  # ${env:VAR:default} supplies a fallback.
+  root: ${env:AVGEN_DATA_ROOT:/path/to/your/latent/shards}
+  manifest: ""          # empty scans `root`, which is slower and not
+                        # deterministic across filesystems; prefer a manifest
+
+  # ---------------------------------------------------------------------
+  # Buckets: resolution/duration groups the loader emits.
+  #
+  # Bucketing exists because padding a 2-second clip out to 10 seconds wastes
+  # 80% of the compute on masked tokens. Choose buckets so that token counts are
+  # roughly comparable across them — otherwise step time swings with whichever
+  # bucket the sampler drew, and throughput graphs become unreadable.
+  #
+  # These are LATENT dimensions. With a VAE at 8x spatial and 4x temporal
+  # compression, 480p x 5s at 24fps is roughly frames=30, height=60, width=106.
+  # Substitute your own codec's compression ratios.
+  # ---------------------------------------------------------------------
+  buckets:
+    - name: short_square
+      frames: 16
+      height: 32
+      width: 32
+      micro_batch_size: 4
+      weight: 1.0
+    - name: long_wide
+      frames: 32
+      height: 32
+      width: 56       # ~16:9 at the same row count
+      micro_batch_size: 2
+      weight: 1.0
+
+  latent_channels: 16   # must match the VAE that produced the shards
+  text_tokens: 226      # must match the frozen text encoder's context length
+  text_width: 4096      # must match the text encoder's feature width
+
+  audio_frames: 0       # > 0 only for an audio-video model
+  audio_channels: 8
+
+  num_workers: 4
+  prefetch_batches: 2
+  shuffle_buffer: 4096  # 0 disables shuffling, which is only correct if the
+                        # shards are already shuffled on disk
+  seed: 0               # combined with data_rank, so ranks see disjoint data
+  drop_last: true       # a short final batch changes the effective batch size
+                        # for one step, which makes that step incomparable
+
+  # Probability a sample's caption is replaced by the null embedding. This is
+  # what makes classifier-free guidance possible at inference. Below ~0.05
+  # guidance is weak; above ~0.2 prompt following degrades.
+  caption_dropout: 0.1
+
+  repeat: 0             # 0 streams forever, which is normal for a large run

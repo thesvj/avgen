@@ -317,7 +317,7 @@ def render_table(rows: list[dict[str, Any]]) -> str:
         ("pinned_mfu", "MFU"),
         ("pinned_scaling_efficiency", "scaling"),
         ("pinned_bottleneck", "bottleneck"),
-        ("candidates_that_fit", "fits"),
+        ("candidates_that_fit", "candidates"),
     ]
     header = "| " + " | ".join(label for _, label in columns) + " |"
     divider = "| " + " | ".join("---" for _ in columns) + " |"
@@ -403,9 +403,7 @@ def main(argv: list[str] | None = None) -> int:
     for plan in plans:
         try:
             rows.append(
-                evaluate_plan(
-                    plan, models, defaults, device_type=args.device_type
-                )
+                evaluate_plan(plan, models, defaults, device_type=args.device_type)
             )
         except PlanCheckError as exc:
             hard_errors.append(str(exc))
@@ -420,9 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(rows, indent=2, sort_keys=True))
 
     failures = [
-        f"[{row['name']}] {message}"
-        for row in rows
-        for message in row["failures"]
+        f"[{row['name']}] {message}" for row in rows for message in row["failures"]
     ]
     failures.extend(hard_errors)
 
@@ -436,8 +432,7 @@ def main(argv: list[str] | None = None) -> int:
             "and say why in the description. Do not silence it separately."
         )
         write_step_summary(
-            "\n### Failures\n\n"
-            + "\n".join(f"- {message}" for message in failures)
+            "\n### Failures\n\n" + "\n".join(f"- {message}" for message in failures)
         )
         return 1
 

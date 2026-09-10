@@ -199,9 +199,7 @@ class ReferenceVideoCodec:
             )
         batch, channels, frames, height, width = shape
         if channels != self.channels:
-            raise ValueError(
-                f"pixel channels must be {self.channels}; got {channels}"
-            )
+            raise ValueError(f"pixel channels must be {self.channels}; got {channels}")
         for name, extent, factor in (
             ("frames", frames, self.temporal_compression),
             ("height", height, self.spatial_compression),
@@ -594,9 +592,7 @@ class ReferenceTextEncoder:
         features = torch.zeros(
             (batch, self.max_length, self.width), dtype=torch.float32, device=device
         )
-        mask = torch.zeros(
-            (batch, self.max_length), dtype=torch.bool, device=device
-        )
+        mask = torch.zeros((batch, self.max_length), dtype=torch.bool, device=device)
         positions = _position_code(self.max_length, self.width, device)
         for index, prompt in enumerate(prompts):
             payload = prompt.encode("utf-8")[: self.max_length]

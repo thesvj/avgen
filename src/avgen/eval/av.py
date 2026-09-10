@@ -41,7 +41,7 @@ from avgen.eval.protocols import (
     require_video,
 )
 
-__all__ = ["AudioBandwidth", "AudioSilence", "AVSyncProxy"]
+__all__ = ["AVSyncProxy", "AudioBandwidth", "AudioSilence"]
 
 _EPS = 1e-8
 

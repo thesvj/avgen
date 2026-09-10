@@ -54,7 +54,11 @@ tracking = ["tensorboard>=2.16"]
 quant = ["torchao>=0.9"]
 # Fault-tolerant training (per-step recovery without a full job restart).
 fault-tolerance = ["torchft>=0.1"]
-all = ["avgen[text,codecs,data,tracking,quant]"]
+# Learned reward models for reinforcement-learning finetuning. The dependency-free
+# reference rewards in avgen.rl.rewards need none of this; these are the gated
+# preference models that a real alignment run wants.
+rewards = ["transformers>=4.44", "hpsv2>=1.2"]
+all = ["avgen[text,codecs,data,tracking,quant,rewards]"]
 
 [project.scripts]
 avgen = "avgen.cli.main:main"

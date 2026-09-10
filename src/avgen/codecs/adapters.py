@@ -548,9 +548,7 @@ class DiffusersVideoCodec:
             ("width", width, spatial),
         ):
             if extent % factor != 0:
-                raise ValueError(
-                    f"{name}={extent} must be divisible by {factor}"
-                )
+                raise ValueError(f"{name}={extent} must be divisible by {factor}")
         # Causal video VAEs emit an extra latent frame for the first pixel frame,
         # so the count is ceil rather than exact division; getting this wrong by
         # one frame shifts every audio-video alignment downstream.

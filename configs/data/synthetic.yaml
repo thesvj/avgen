@@ -1,0 +1,22 @@
+# Synthetic data — deterministic, dependency-free, and not useful for training.
+#
+# Its purpose is that every avgen command runs end to end on a laptop with no
+# dataset, no decoder, and no GPU. A smoke test built on it is a real regression
+# test because the generator is deterministic given the seed.
+data:
+  source: synthetic
+  buckets:
+    - name: tiny
+      frames: 8         # latent frames, i.e. after temporal VAE compression
+      height: 16        # latent rows, after 8x spatial compression
+      width: 16
+      micro_batch_size: 2
+      weight: 1.0
+  num_workers: 0        # in-process: a worker pool for a synthetic generator
+                        # costs more than it saves and complicates debugging
+  prefetch_batches: 1
+  shuffle_buffer: 0
+  latent_channels: 4
+  text_tokens: 16
+  text_width: 128
+  caption_dropout: 0.1

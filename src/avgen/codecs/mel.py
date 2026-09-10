@@ -189,9 +189,10 @@ def hz_to_mel(frequency: torch.Tensor) -> torch.Tensor:
     # torch.where evaluates both branches, so the log argument is clamped away
     # from zero even where it is discarded; without the clamp a 0 Hz entry
     # produces a NaN gradient and an inf that survives the select.
-    logarithmic = _BREAK_MEL + torch.log(
-        torch.clamp(frequency / _BREAK_HZ, min=1e-10)
-    ) / _LOG_STEP
+    logarithmic = (
+        _BREAK_MEL
+        + torch.log(torch.clamp(frequency / _BREAK_HZ, min=1e-10)) / _LOG_STEP
+    )
     return torch.where(frequency >= _BREAK_HZ, logarithmic, linear)
 
 

@@ -227,9 +227,7 @@ def first_frame_mask(
         ValueError: If ``frames`` is not in ``[1, state.frames]``.
     """
     if isinstance(frames, bool) or not 1 <= frames <= state.frames:
-        raise ValueError(
-            f"frames must be in [1, {state.frames}]; got {frames!r}"
-        )
+        raise ValueError(f"frames must be in [1, {state.frames}]; got {frames!r}")
     mask = torch.zeros(
         state.element_shape,
         dtype=torch.bool,
@@ -386,9 +384,7 @@ def unconditional_input(
         patchifier=patchifier,
         condition_mode=mode,
         audio=(
-            replace(audio, anchor=None, anchor_mask=None)
-            if audio is not None
-            else None
+            replace(audio, anchor=None, anchor_mask=None) if audio is not None else None
         ),
         audio_patchifier=audio_patchifier,
     )
@@ -616,9 +612,7 @@ def _anchor_everything(state: StreamState) -> StreamState:
     return replace(state, anchor=state.latents, anchor_mask=mask)
 
 
-def _place_prefix(
-    state: StreamState, anchor: torch.Tensor, frames: int
-) -> StreamState:
+def _place_prefix(state: StreamState, anchor: torch.Tensor, frames: int) -> StreamState:
     """Place a clean prefix onto a full-length canvas and mark it anchored."""
     if anchor.ndim == 4:
         anchor = anchor[:, :, None]
@@ -633,19 +627,16 @@ def _place_prefix(
             f"latent_frames={frames} was requested"
         )
     canvas = state.latents.clone()
-    expected = (state.latents.shape[0], state.latents.shape[1], frames, *state.latents.shape[3:])
-    if tuple(anchor.shape) != tuple(expected):
-        raise ValueError(
-            f"anchor shape must be {tuple(expected)}; got {tuple(anchor.shape)}"
-        )
+    shape = tuple(int(value) for value in state.latents.shape)
+    expected = (shape[0], shape[1], frames, *shape[3:])
+    if tuple(anchor.shape) != expected:
+        raise ValueError(f"anchor shape must be {expected}; got {tuple(anchor.shape)}")
     canvas[:, :, :frames] = anchor.to(canvas.dtype)
     mask = first_frame_mask(state, frames=frames)
     return replace(state, anchor=canvas, anchor_mask=mask)
 
 
-def _to_stream(
-    state: StreamState, sigma: float, patchifier: Patchifier
-) -> TokenStream:
+def _to_stream(state: StreamState, sigma: float, patchifier: Patchifier) -> TokenStream:
     """Mix anchors into the latents and patchify, exactly as training does.
 
     The three steps, in the order the training objective performs them:

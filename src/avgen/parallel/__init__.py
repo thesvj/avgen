@@ -32,6 +32,7 @@ from avgen.parallel.comm import (
 from avgen.parallel.context import (
     context_parallel_region,
     gather_stream,
+    gather_tokens,
     pad_to_multiple,
     shard_stream,
     sharded_length,
@@ -97,6 +98,7 @@ __all__ = [
     "float8_available",
     "gather_object",
     "gather_stream",
+    "gather_tokens",
     "init_distributed",
     "is_distributed_launch",
     "local_rank_device",

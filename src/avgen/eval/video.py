@@ -118,9 +118,9 @@ class TemporalConsistency(RunningMetric):
         if features.shape[1] <= self._stride:
             return {}
         normalised = features / features.norm(dim=-1, keepdim=True).clamp_min(_EPS)
-        similarity = (normalised[:, self._stride :] * normalised[:, : -self._stride]).sum(
-            dim=-1
-        )
+        leading = normalised[:, self._stride :]
+        trailing = normalised[:, : -self._stride]
+        similarity = (leading * trailing).sum(dim=-1)
         pairs = int(similarity.numel())
         worst = similarity.min(dim=1).values
         return {
@@ -338,9 +338,7 @@ class SaturationClipping(RunningMetric):
         super().__init__(device=device)
         low, high = value_range
         if not high > low:
-            raise ValueError(
-                f"value_range must be increasing; got {value_range!r}"
-            )
+            raise ValueError(f"value_range must be increasing; got {value_range!r}")
         self._low = low
         self._high = high
         self._margin = tolerance * (high - low)
@@ -417,7 +415,9 @@ class SharpnessProxy(RunningMetric):
             # A 3x3 kernel on a 2-pixel axis measures the padding, not the image.
             return {}
         kernel = _LAPLACIAN.to(video.device).view(1, 1, 3, 3).expand(channels, 1, 3, 3)
-        flat = video.permute(0, 2, 1, 3, 4).reshape(batch * frames, channels, height, width)
+        flat = video.permute(0, 2, 1, 3, 4).reshape(
+            batch * frames, channels, height, width
+        )
         response = torch.nn.functional.conv2d(flat, kernel, groups=channels)
         per_frame = response.flatten(1).var(dim=1).view(batch, frames)
         scale = _per_sample_scale(video).pow(2).view(-1, 1)

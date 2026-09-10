@@ -1,0 +1,22 @@
+# 14B video DiT — multi-node only.
+#
+# depth 48 splits evenly into 2, 3, 4, 6, 8, or 12 pipeline stages; width 5120
+# divides by 8 for intra-node tensor parallelism. Both properties matter here
+# and nowhere smaller, because this is the first size where a single node
+# cannot hold the model.
+#
+# rope_theta is raised because this size is intended for long clips, and the
+# rotary base has to cover the sequence lengths actually trained on — a base
+# calibrated for 4k positions extrapolates badly past 32k.
+model:
+  name: video_dit
+  depth: 48
+  width: 3328
+  num_heads: 26         # 128 dims per head
+  mlp_ratio: 4
+  patch_frames: 1
+  patch_height: 2
+  patch_width: 2
+  in_channels: 16
+  cross_attention: true
+  rope_theta: 500000.0

@@ -78,7 +78,9 @@ def build_parallel_dims(
     from avgen.parallel.dims import ParallelDims
 
     spec = config.parallel
-    size = world_size if world_size is not None else int(os.environ.get("WORLD_SIZE", "1"))
+    size = (
+        world_size if world_size is not None else int(os.environ.get("WORLD_SIZE", "1"))
+    )
     return ParallelDims(
         world_size=size,
         dp_replicate=spec.dp_replicate,
@@ -300,9 +302,7 @@ def build_accelerator(name: str) -> Accelerator:
     }
     key = name.strip().lower()
     if key not in profiles:
-        raise ValueError(
-            f"unknown gpu {name!r}; known: {', '.join(sorted(profiles))}"
-        )
+        raise ValueError(f"unknown gpu {name!r}; known: {', '.join(sorted(profiles))}")
     return profiles[key]
 
 

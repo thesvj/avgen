@@ -258,9 +258,7 @@ class LatentStatistics:
                 measured standard deviation is not positive.
         """
         if latents.ndim < 2:
-            raise ValueError(
-                f"latents must have rank >= 2; got {tuple(latents.shape)}"
-            )
+            raise ValueError(f"latents must have rank >= 2; got {tuple(latents.shape)}")
         reduce_dims = tuple(i for i in range(latents.ndim) if i != channel_dim)
         values = latents.to(torch.float64)
         mean = values.mean(dim=reduce_dims)

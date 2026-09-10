@@ -13,7 +13,8 @@
     "target: tighten them when a real run calibrates the cost models, and treat",
     "any tightening as a maintainer decision (see .github/CODEOWNERS).",
     "",
-    "Refresh the observed values with:  make simulate ARGS='--update'"
+    "Refresh the observed values with:",
+    "  python .github/scripts/check_reference_plans.py --update"
   ],
   "defaults": {
     "accelerator": "H100_SXM",

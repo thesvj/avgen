@@ -1,0 +1,78 @@
+# One node, 8 GPUs — a 2B model at 16k tokens.
+#
+# Parallelism choice, and why:
+#
+#   dp_shard = 8, everything else 1.
+#
+# A 2B model in mixed precision needs ~4 GB of bf16 weights, ~4 GB of gradients,
+# and ~24 GB of AdamW state (12 bytes per parameter: an fp32 master copy plus
+# two fp32 moments — not the 8 people assume). That is 32 GB before a single
+# activation exists, on an 80 GB device. FSDP across all 8 ranks divides all
+# three by 8 and the run has room to spare.
+#
+# No tensor parallelism: it communicates twice per block on the critical path
+# and buys nothing here, because nothing is short of memory once FSDP is on.
+# No context parallelism: 16k tokens shard fine as a single sequence per rank.
+# Reach for CP when the clip gets longer — it is the only axis that reduces
+# per-rank sequence length, and attention is quadratic in that.
+#
+# Launch:
+#   torchrun --nproc-per-node 8 -m avgen.cli.main train \
+#       --config configs/train/node_8gpu.yaml
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-8gpu
+output_dir: runs/dit2b-8gpu
+seed: 0
+
+train:
+  steps: 200000
+  global_batch_size: 64     # 8 ranks x micro 4 x accum 2
+  micro_batch_size: 4
+  optimizer: adamw
+  lr: 8.0e-5
+  weight_decay: 0.01
+  beta2: 0.95
+  max_grad_norm: 1.0
+  schedule: cosine
+  warmup_steps: 2000
+  timestep_sampler: shifted_logit_normal
+  base_seq_len: 256
+  max_seq_len: 16384
+  ema_decay: 0.9999
+  log_every: 20
+  eval_every: 10000
+
+parallel:
+  dp_shard: -1              # -1 takes whatever is left over, which is 8 here.
+                            # Writing -1 rather than 8 means this file still
+                            # works unchanged on a 4-GPU node.
+  tensor: 1
+  context: 1
+  pipeline: 1
+  gpus_per_node: 8
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32   # keep this at fp32: the reduction tree is
+                            # log(world_size) deep, so bf16 reduction error
+                            # grows with job size — exactly backwards
+  activation:
+    mode: selective_op
+    save_op_frequency: 1
+  fsdp:
+    reshard_after_forward: true
+  compile_blocks: true
+
+checkpoint:
+  save_every: 2000
+  keep_last_n: 3
+  keep_every_n_steps: 20000
+  async_save: true          # on a 2B model this is a ~90-second stall versus a
+                            # ~2-second one, every save
+
+telemetry:
+  loggers: [console, jsonl]
+  log_every: 20
+  memory_report_every: 1000

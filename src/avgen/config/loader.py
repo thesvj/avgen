@@ -413,9 +413,7 @@ def _coerce_bool(where: str, value: Any) -> bool:
         return False
     if isinstance(value, int) and value in (0, 1):
         return bool(value)
-    raise ConfigError(
-        f"{where} must be a boolean (true/false); got {value!r}"
-    )
+    raise ConfigError(f"{where} must be a boolean (true/false); got {value!r}")
 
 
 def _coerce_number(where: str, value: Any, target: type) -> Any:
@@ -429,9 +427,7 @@ def _coerce_number(where: str, value: Any, target: type) -> Any:
             try:
                 return float(value)
             except ValueError as error:
-                raise ConfigError(
-                    f"{where} must be a float; got {value!r}"
-                ) from error
+                raise ConfigError(f"{where} must be a float; got {value!r}") from error
     if target is int:
         if isinstance(value, int):
             return value
@@ -498,16 +494,13 @@ def coerce(where: str, value: Any, annotation: Any) -> Any:
         options = get_args(annotation)
         if value not in options:
             raise ConfigError(
-                f"{where} must be one of {', '.join(map(repr, options))}; "
-                f"got {value!r}"
+                f"{where} must be one of {', '.join(map(repr, options))}; got {value!r}"
             )
         return value
     if origin in (tuple, list):
         args = get_args(annotation)
         if not isinstance(value, list | tuple):
-            raise ConfigError(
-                f"{where} must be a list; got {type(value).__name__}"
-            )
+            raise ConfigError(f"{where} must be a list; got {type(value).__name__}")
         item_type: Any = args[0] if args else Any
         items = [
             coerce(f"{where}[{index}]", item, item_type)
@@ -516,9 +509,7 @@ def coerce(where: str, value: Any, annotation: Any) -> Any:
         return tuple(items) if origin is tuple else items
     if origin is dict:
         if not isinstance(value, Mapping):
-            raise ConfigError(
-                f"{where} must be a mapping; got {type(value).__name__}"
-            )
+            raise ConfigError(f"{where} must be a mapping; got {type(value).__name__}")
         args = get_args(annotation)
         value_type: Any = args[1] if len(args) == 2 else Any
         return {

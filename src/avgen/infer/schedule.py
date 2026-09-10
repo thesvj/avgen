@@ -59,6 +59,7 @@ __all__ = [
     "resolution_shift",
 ]
 
+
 def apply_shift(sigmas: torch.Tensor, shift: float) -> torch.Tensor:
     """Reparametrise flow time by the standard resolution shift.
 
@@ -177,9 +178,7 @@ class SigmaSchedule:
     def __post_init__(self) -> None:
         """Validate monotonicity and the endpoints once, at construction."""
         if self.sigmas.ndim != 1:
-            raise ValueError(
-                f"sigmas must have rank 1; got {tuple(self.sigmas.shape)}"
-            )
+            raise ValueError(f"sigmas must have rank 1; got {tuple(self.sigmas.shape)}")
         if self.sigmas.numel() < 2:
             raise ValueError(
                 f"sigmas must hold at least two boundaries (one step); got "
@@ -324,9 +323,7 @@ def linear_sigmas(
     """
     lowest = sigma_max / steps if sigma_min is None else sigma_min
     _require_range(steps, lowest, sigma_max)
-    body = torch.linspace(
-        sigma_max, lowest, steps, dtype=torch.float32, device=device
-    )
+    body = torch.linspace(sigma_max, lowest, steps, dtype=torch.float32, device=device)
     return _close(body)
 
 
@@ -426,9 +423,7 @@ def linear_quadratic_sigmas(
     _require_range(steps, sigma_max / (steps + 1), sigma_max)
     split = max(steps // 2, 1) if linear_steps is None else linear_steps
     if isinstance(split, bool) or not 0 < split < steps:
-        raise ValueError(
-            f"linear_steps must be in (0, steps={steps}); got {split!r}"
-        )
+        raise ValueError(f"linear_steps must be in (0, steps={steps}); got {split!r}")
     if not 0.0 < threshold_noise < sigma_max:
         raise ValueError(
             f"threshold_noise must be in (0, sigma_max={sigma_max}); "

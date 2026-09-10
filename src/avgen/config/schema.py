@@ -276,7 +276,9 @@ class BucketConfig:
         """Validate the bucket geometry."""
         require_path_like("data.buckets[].name", self.name)
         for name in ("frames", "height", "width", "micro_batch_size"):
-            require_positive_int(f"data.buckets[{self.name}].{name}", getattr(self, name))
+            require_positive_int(
+                f"data.buckets[{self.name}].{name}", getattr(self, name)
+            )
         require_non_negative(f"data.buckets[{self.name}].weight", self.weight)
 
     def tokens(self, model: ModelConfig) -> int:
@@ -604,7 +606,9 @@ class PrecisionSpec:
     def __post_init__(self) -> None:
         """Validate dtype names and the float8 threshold."""
         require_choice("parallel.precision.param_dtype", self.param_dtype, DTYPE_NAMES)
-        require_choice("parallel.precision.reduce_dtype", self.reduce_dtype, DTYPE_NAMES)
+        require_choice(
+            "parallel.precision.reduce_dtype", self.reduce_dtype, DTYPE_NAMES
+        )
         require_choice(
             "parallel.precision.float8_recipe",
             self.float8_recipe,
@@ -761,7 +765,12 @@ class ParallelConfigSpec:
         require_choice(
             "parallel.compile_mode",
             self.compile_mode,
-            ("default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"),
+            (
+                "default",
+                "reduce-overhead",
+                "max-autotune",
+                "max-autotune-no-cudagraphs",
+            ),
         )
         if self.tensor > self.gpus_per_node:
             raise ValueError(

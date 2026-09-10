@@ -347,7 +347,9 @@ class EvalReport:
         try:
             payload = json.loads(source.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as error:
-            raise ValueError(f"cannot read evaluation report {source}: {error}") from error
+            raise ValueError(
+                f"cannot read evaluation report {source}: {error}"
+            ) from error
         return cls.from_dict(payload)
 
     def with_metrics(self, values: Mapping[str, float]) -> EvalReport:
@@ -372,8 +374,7 @@ class EvalReport:
         """
         lines = [
             "=" * 72,
-            f"avgen evaluation — {self.run_name or '(unnamed run)'} "
-            f"step {self.step}",
+            f"avgen evaluation — {self.run_name or '(unnamed run)'} step {self.step}",
             "=" * 72,
             f"  checkpoint  {self.pin.checkpoint or '(unspecified)'}",
             f"  settings    {self.pin.describe()}",
@@ -419,7 +420,7 @@ def capture_environment() -> dict[str, str]:
         if torch.cuda.is_available():  # pragma: no cover - depends on hardware
             environment["cuda"] = torch.version.cuda or "unknown"
             environment["device"] = torch.cuda.get_device_name(0)
-    except Exception:  # noqa: BLE001 - provenance must never fail an eval
+    except Exception:
         environment["torch"] = "unavailable"
     return environment
 

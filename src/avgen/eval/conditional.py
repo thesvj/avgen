@@ -116,9 +116,7 @@ class FirstFrameFidelity(RunningMetric):
         mse = (generated - target).pow(2).mean(dim=1)
         # PSNR against the reference's own range rather than a fixed peak of 1,
         # so the metric is meaningful in latent space too.
-        span = (
-            target.max(dim=1).values - target.min(dim=1).values
-        ).clamp_min(_EPS)
+        span = (target.max(dim=1).values - target.min(dim=1).values).clamp_min(_EPS)
         psnr = 10.0 * torch.log10(span.pow(2) / mse.clamp_min(_EPS))
         cosine = torch.nn.functional.cosine_similarity(generated, target, dim=1)
         batch = int(mse.numel())
@@ -311,8 +309,8 @@ class InpaintBoundaryConsistency(RunningMetric):
         if isinstance(reference, torch.Tensor) and reference.shape == video.shape:
             preserved = 1.0 - mask
             weight = preserved.flatten(1).sum(dim=1).clamp_min(_EPS)
-            difference = (video - reference.detach().float()).abs().mean(
-                dim=1, keepdim=True
+            difference = (
+                (video - reference.detach().float()).abs().mean(dim=1, keepdim=True)
             )
             scale = video.flatten(1).std(dim=1).clamp_min(_EPS)
             leakage = (difference * preserved).flatten(1).sum(dim=1) / weight / scale

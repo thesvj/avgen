@@ -86,7 +86,9 @@ class GuidanceConfig:
             means 1.0.
         video_scale: Multiplier on ``scale`` for video-anchor conditioning — a
             first frame, a temporal prefix, an inpainting mask.
-        audio_scale: Multiplier on ``scale`` for audio-anchor conditioning.
+        audio_scale: Multiplier on ``scale`` for audio conditioning — an audio
+            anchor in a chained composition, and the guidance factor applied to
+            the audio stream in ordinary two-branch guidance.
         rescale: Strength of the Lin et al. standard-deviation rescale, in
             ``[0, 1]``. ``0.0`` disables it; ``0.7`` is the usual value when it
             is used at all.

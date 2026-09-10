@@ -264,7 +264,7 @@ class LoRAConfig:
         }
 
 
-def _placements_of(tensor: torch.Tensor) -> tuple[object, ...] | None:
+def _placements_of(tensor: torch.Tensor) -> tuple[Any, ...] | None:
     """Return a DTensor's placements, or ``None`` for a plain tensor."""
     from torch.distributed.tensor import DTensor
 
@@ -331,7 +331,7 @@ def _reject_fsdp_sharded(name: str, weight: torch.Tensor) -> None:
 
 def _adapter_placements(
     weight: torch.Tensor,
-) -> tuple[tuple[object, ...], tuple[object, ...]] | None:
+) -> tuple[tuple[Any, ...], tuple[Any, ...]] | None:
     """Derive DTensor placements for ``lora_a`` and ``lora_b`` from the base.
 
     The rule follows from where the contraction happens. For a column-wise
@@ -378,7 +378,7 @@ def _adapter_placements(
 def _like(
     reference: torch.Tensor,
     shape: tuple[int, ...],
-    placements: tuple[object, ...] | None,
+    placements: tuple[Any, ...] | None,
 ) -> torch.Tensor:
     """Allocate a zero tensor matching a reference's device, dtype and layout.
 
@@ -443,7 +443,7 @@ def _sum_of_squares(weight: torch.Tensor) -> torch.Tensor:
     return squares
 
 
-class LoRALinear(nn.Linear):
+class LoRALinear(nn.Linear):  # type: ignore[misc]
     """An ``nn.Linear`` carrying a low-rank (optionally DoRA) adapter.
 
     Subclassing rather than wrapping is the load-bearing design decision. A

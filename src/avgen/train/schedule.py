@@ -305,7 +305,7 @@ def _warmup_stable_decay(
         raise ValueError(
             f"decay_shape must be one of 1-sqrt, linear, cosine; got {shape!r}"
         )
-    decay_steps = max(int(round(total_steps * fraction)), 1)
+    decay_steps = max(round(total_steps * fraction), 1)
     decay_start = max(total_steps - decay_steps, warmup_steps)
     span = max(total_steps - decay_start, 1)
 

@@ -503,7 +503,5 @@ def merge_feature_banks(
     ordered = [banks[key] for key in sorted(banks)]
     dimensions = {tensor.shape[-1] for tensor in ordered}
     if len(dimensions) != 1:
-        raise MetricError(
-            f"feature banks disagree in dimension: {sorted(dimensions)}"
-        )
+        raise MetricError(f"feature banks disagree in dimension: {sorted(dimensions)}")
     return torch.cat(ordered, dim=0)
