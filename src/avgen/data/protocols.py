@@ -258,9 +258,7 @@ class BucketPlan:
         total = math.fsum(weights)
         if total <= 0.0:
             raise ValueError("bucket weights must not all be zero")
-        object.__setattr__(
-            self, "weights", tuple(weight / total for weight in weights)
-        )
+        object.__setattr__(self, "weights", tuple(weight / total for weight in weights))
 
     def __len__(self) -> int:
         """Return the number of buckets."""
@@ -348,9 +346,7 @@ class BucketPlan:
 
         def _score(bucket: Bucket) -> tuple[float, float, float, int]:
             ratio_gap = abs(math.log(bucket.aspect_ratio / source_ratio))
-            upscale = max(
-                0.0, math.log((bucket.height * bucket.width) / source_cells)
-            )
+            upscale = max(0.0, math.log((bucket.height * bucket.width) / source_cells))
             frame_gap = abs(math.log(bucket.frames / frames))
             return (ratio_gap, upscale, frame_gap, bucket.bucket_id)
 
@@ -686,12 +682,8 @@ def collate_samples(
     audio = torch.stack([sample.audio for sample in samples], dim=0)
     text = torch.stack([sample.text for sample in samples], dim=0)
     text_mask = torch.stack([sample.text_mask for sample in samples], dim=0)
-    video_positions = torch.stack(
-        [sample.video_positions for sample in samples], dim=0
-    )
-    audio_positions = torch.stack(
-        [sample.audio_positions for sample in samples], dim=0
-    )
+    video_positions = torch.stack([sample.video_positions for sample in samples], dim=0)
+    audio_positions = torch.stack([sample.audio_positions for sample in samples], dim=0)
     # sample_ids stay on CPU for the life of the batch: logging one must never
     # be a reason to synchronise the device inside a training step.
     sample_ids = torch.tensor(
@@ -726,9 +718,7 @@ def collate_samples(
     target_spec = samples[0].target_spec.with_batch_size(batch)
     targets = TensorBundle(
         tuple(
-            torch.stack(
-                [sample.targets.values[index] for sample in samples], dim=0
-            )
+            torch.stack([sample.targets.values[index] for sample in samples], dim=0)
             for index in range(len(samples[0].target_spec))
         )
     )

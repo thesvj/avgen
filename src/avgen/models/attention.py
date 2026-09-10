@@ -176,7 +176,8 @@ def sdpa_context(
     if device_arch(device) == "cpu":
         return nullcontext()
     chosen = tuple(backends) if backends is not None else attention_backends(device)
-    return sdpa_kernel(list(chosen))
+    pinned: AbstractContextManager[None] = sdpa_kernel(list(chosen))
+    return pinned
 
 
 def key_padding_mask(

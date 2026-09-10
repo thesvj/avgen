@@ -292,9 +292,7 @@ class ClipQA:
             low = getattr(self, low_name)
             high = getattr(self, high_name)
             if low is not None and high is not None and low > high:
-                raise ValueError(
-                    f"{low_name}={low} must not exceed {high_name}={high}"
-                )
+                raise ValueError(f"{low_name}={low} must not exceed {high_name}={high}")
         if self.aspect_ratio_range is not None:
             low, high = self.aspect_ratio_range
             if not (math.isfinite(low) and math.isfinite(high)) or low <= 0.0:
@@ -697,8 +695,7 @@ def build_latent_sample(
     )
     if audio_tensor.ndim != 2:
         raise ValueError(
-            f"audio latents must be (channels, frames); got "
-            f"{tuple(audio_tensor.shape)}"
+            f"audio latents must be (channels, frames); got {tuple(audio_tensor.shape)}"
         )
     audio_channels, audio_frames = (int(size) for size in audio_tensor.shape)
 
@@ -806,7 +803,7 @@ def probe_clip(
 
     try:
         container = av.open(str(source))
-    except Exception as error:  # noqa: BLE001 - any decoder failure is a rejection
+    except Exception as error:  # a decoder failure is data, not a crash
         return ClipProbe(
             path=str(source),
             decoded=False,

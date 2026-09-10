@@ -744,8 +744,8 @@ class AVDiT(VideoDiT):
             self.audio_text_proj: nn.Module = nn.Identity()
             self.audio_rope: nn.Module = nn.Identity()
         else:
-            self.audio_in_proj = nn.Identity()  # type: ignore[assignment]
-            self.audio_out_proj = nn.Identity()  # type: ignore[assignment]
+            self.audio_in_proj = nn.Identity()
+            self.audio_out_proj = nn.Identity()
             self.audio_modulation = AdaLNModulation(
                 config.audio_cond_dim, config.audio_width
             )

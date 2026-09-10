@@ -403,7 +403,9 @@ class ShardedLoader:
         """
         return self._sampler.batches_per_epoch() // self._data_world
 
-    def epoch_plan(self, epoch: int, *, step: int | None = None) -> tuple[BucketBatch, ...]:
+    def epoch_plan(
+        self, epoch: int, *, step: int | None = None
+    ) -> tuple[BucketBatch, ...]:
         """Return this rank's batches for one epoch, in order.
 
         Args:
@@ -571,7 +573,11 @@ class ShardedLoader:
                 "LoaderConfig.allow_reshard=True to accept an approximate resume."
             )
         self._cursor.load_state_dict(state["cursor"])
-        if recorded_world != self._data_world or recorded_batch != self._config.batch_size:
+        resliced = (
+            recorded_world != self._data_world
+            or recorded_batch != self._config.batch_size
+        )
+        if resliced:
             # Approximate resume: the within-epoch position is meaningless under
             # a different slicing, so keep the epoch (which controls the shuffle)
             # and restart the epoch rather than pretending to land on the same
@@ -677,7 +683,7 @@ def _prefetch(source: Iterator[MediaBatch], *, depth: int) -> Iterator[MediaBatc
                 if stop.is_set():
                     break
                 channel.put((batch, None))
-        except BaseException as error:  # noqa: BLE001 - forwarded to the consumer
+        except BaseException as error:  # forwarded to the consumer's thread
             channel.put((None, error))
         finally:
             channel.put((None, None))

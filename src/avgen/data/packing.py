@@ -141,9 +141,7 @@ class PackedLayout:
         """
         return sum(self.lengths) / self.capacity
 
-    def segment_ids(
-        self, *, device: torch.device | str = "cpu"
-    ) -> torch.Tensor:
+    def segment_ids(self, *, device: torch.device | str = "cpu") -> torch.Tensor:
         """Return the per-token segment index, with padding marked.
 
         Args:
@@ -180,9 +178,7 @@ class PackedLayout:
             bounds.append(bounds[-1] + length)
         return torch.tensor(bounds, dtype=torch.int32)
 
-    def attention_mask(
-        self, *, device: torch.device | str = "cpu"
-    ) -> torch.Tensor:
+    def attention_mask(self, *, device: torch.device | str = "cpu") -> torch.Tensor:
         """Return the dense block-diagonal mask.
 
         Use this for a reference implementation, a test, or an attention backend
@@ -203,9 +199,7 @@ class PackedLayout:
         same = ids.unsqueeze(1) == ids.unsqueeze(0)
         return same & valid.unsqueeze(1) & valid.unsqueeze(0)
 
-    def segment_weights(
-        self, *, device: torch.device | str = "cpu"
-    ) -> torch.Tensor:
+    def segment_weights(self, *, device: torch.device | str = "cpu") -> torch.Tensor:
         """Return per-token loss weights that make every segment count equally.
 
         Each token in a segment of length ``n`` gets weight ``1/n``, so the

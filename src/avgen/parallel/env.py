@@ -142,8 +142,10 @@ def init_distributed(
     ``torchrun``, so the same script runs on a laptop and on a cluster.
 
     Args:
-        backend: Collective backend. Defaults to ``nccl`` on CUDA, ``gloo``
-            otherwise.
+        backend: Collective backend. Defaults to ``cpu:gloo,cuda:nccl`` on CUDA
+            and ``gloo`` otherwise. The CPU half is required by asynchronous
+            distributed checkpointing; overriding this with plain ``"nccl"``
+            will break every checkpoint save.
         timeout: Steady-state collective timeout.
         init_timeout: Rendezvous timeout, applied by temporarily raising the
             store timeout during initialisation.
@@ -184,7 +186,15 @@ def init_distributed(
         # rank that holds the job's allocation until the scheduler kills it.
         os.environ.setdefault("TORCH_NCCL_ASYNC_ERROR_HANDLING", "1")
 
-    resolved_backend = backend or ("nccl" if torch.cuda.is_available() else "gloo")
+    # A CPU backend must be present alongside NCCL, and this is not optional.
+    # torch.distributed.checkpoint's async_save stages the state dict and then
+    # runs its planning collectives on a CPU process group; with a NCCL-only
+    # group it asserts "A CPU backend must be enabled for async save" and every
+    # checkpoint on a GPU job fails. The multi-backend spelling creates both
+    # groups from one call and costs nothing when the CPU one is unused.
+    resolved_backend = backend or (
+        "cpu:gloo,cuda:nccl" if torch.cuda.is_available() else "gloo"
+    )
 
     # Bind the device *before* init_process_group so NCCL builds communicators
     # on the right GPU rather than inheriting device 0 from an unset context.

@@ -91,7 +91,7 @@ def largest_remainder(total: int, weights: Sequence[float]) -> tuple[int, ...]:
         raise ValueError("largest_remainder requires at least one positive weight")
 
     exact = [total * weight / mass for weight in weights]
-    floors = [int(math.floor(value)) for value in exact]
+    floors = [math.floor(value) for value in exact]
     leftover = total - sum(floors)
     # Ties break on index, never on a set or dict ordering: the apportionment
     # must be identical on every rank, and two ranks that disagree about which
@@ -131,8 +131,7 @@ class CurriculumPhase:
         for index, weight in enumerate(self.weights):
             if not math.isfinite(weight) or weight < 0.0:
                 raise ValueError(
-                    f"weights[{index}] must be finite and non-negative; "
-                    f"got {weight!r}"
+                    f"weights[{index}] must be finite and non-negative; got {weight!r}"
                 )
         if math.fsum(self.weights) <= 0.0:
             raise ValueError("a curriculum phase must have one positive weight")

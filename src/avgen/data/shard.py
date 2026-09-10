@@ -321,14 +321,10 @@ class ShardManifest:
                 data_sha256=str(values["data_sha256"]),
                 data_bytes=int(values["data_bytes"]),
                 created_unix=int(values.get("created_unix", 0)),
-                extra={
-                    key: value for key, value in values.items() if key not in known
-                },
+                extra={key: value for key, value in values.items() if key not in known},
             )
         except (KeyError, TypeError, ValueError) as error:
-            raise ShardCorruptionError(
-                f"malformed shard manifest: {error}"
-            ) from error
+            raise ShardCorruptionError(f"malformed shard manifest: {error}") from error
         if declared != len(records):
             raise ShardCorruptionError(
                 f"manifest declares {declared} samples but lists {len(records)}"
@@ -583,9 +579,7 @@ def _read_manifest(directory: Path) -> tuple[ShardManifest, bytes]:
     try:
         payload = manifest_path.read_bytes()
     except OSError as error:
-        raise ShardCorruptionError(
-            f"{manifest_path} is unreadable: {error}"
-        ) from error
+        raise ShardCorruptionError(f"{manifest_path} is unreadable: {error}") from error
     try:
         values = json.loads(payload)
     except json.JSONDecodeError as error:
@@ -864,7 +858,7 @@ class ShardReader:
         key = _tensor_key(index, name)
         try:
             tensor = self._handle.get_tensor(key)
-        except Exception as error:  # noqa: BLE001 - binding raises a bare error
+        except Exception as error:  # the binding raises an untyped error
             raise ShardCorruptionError(
                 f"{self._path}: manifest promises tensor {key!r} but the container "
                 f"does not hold it ({error})"

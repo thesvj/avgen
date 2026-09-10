@@ -791,7 +791,7 @@ class CheckpointConfig:
         save_every: Steps between checkpoints. Zero disables saving, which is
             only sane for a smoke test.
         keep_last_n: Recent checkpoints retained. Zero keeps all.
-        keep_every: Additionally retain every n-th checkpoint forever, so a
+        keep_every_n_steps: Additionally retain every n-th checkpoint forever, so a
             long run leaves a usable trajectory rather than only its tail.
         async_save: Whether to stage the save and return immediately. On a
             large model this is the difference between a 90-second stall and a
@@ -813,7 +813,7 @@ class CheckpointConfig:
     dir: str = ""
     save_every: int = 1000
     keep_last_n: int = 3
-    keep_every: int = 0
+    keep_every_n_steps: int = 0
     async_save: bool = True
     resume: str = ""
     load_model_only: bool = False
@@ -822,7 +822,7 @@ class CheckpointConfig:
 
     def __post_init__(self) -> None:
         """Validate retention counts and the export dtype."""
-        for name in ("save_every", "keep_last_n", "keep_every"):
+        for name in ("save_every", "keep_last_n", "keep_every_n_steps"):
             require_non_negative_int(f"checkpoint.{name}", getattr(self, name))
         if self.export_dtype:
             require_choice("checkpoint.export_dtype", self.export_dtype, DTYPE_NAMES)

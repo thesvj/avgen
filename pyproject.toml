@@ -135,9 +135,27 @@ files = ["src/avgen"]
 strict = true
 warn_unreachable = true
 disallow_any_generics = true
+# torch is followed as Any (see the override below), which makes nn.Module an
+# implicit Any; strict would then reject every model class for subclassing it.
+# The alternative is untyped torch stubs leaking through the whole codebase.
+disallow_subclassing_any = false
 # torch's own stubs are incomplete in places; do not fail the build on them.
 [[tool.mypy.overrides]]
-module = ["torch.*", "torchao.*", "torchft.*", "safetensors.*", "yaml.*"]
+module = [
+  "torch.*",
+  "torchao.*",
+  "torchft.*",
+  "safetensors.*",
+  "yaml.*",
+  "wandb.*",
+  "tensorboard.*",
+  "torch.utils.tensorboard.*",
+  "diffusers.*",
+  "transformers.*",
+  "av.*",
+  "pyarrow.*",
+  "bitsandbytes.*",
+]
 ignore_missing_imports = true
 follow_imports = "skip"
 

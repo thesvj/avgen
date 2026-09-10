@@ -172,12 +172,20 @@ def learned_metric_available(name: str) -> bool:
 
 
 def available_learned_metrics() -> dict[str, bool]:
-    """Return every declared gated metric and whether its backend is present.
+    """Return every declared gated metric and whether it can actually be built.
+
+    "Buildable" means both halves: the backend modules import *and* avgen ships
+    a factory for it. Reporting backend presence alone would call ``fvd``
+    available on any machine with torch, which is true of the dependency and
+    false of the metric.
 
     Returns:
-        Name to availability, sorted by name.
+        Name to buildability, sorted by name.
     """
-    return {name: learned_metric_available(name) for name in list_learned_metrics()}
+    return {
+        name: learned_metric_available(name) and _spec(name).factory is not None
+        for name in list_learned_metrics()
+    }
 
 
 def describe_learned_metrics() -> dict[str, dict[str, str]]:
@@ -191,11 +199,17 @@ def describe_learned_metrics() -> dict[str, dict[str, str]]:
     for name in list_learned_metrics():
         spec = _spec(name)
         missing = spec.missing_modules()
+        if missing:
+            status = f"backend missing: {', '.join(missing)}"
+        elif spec.factory is None:
+            status = "declared; avgen ships no implementation (bring your own)"
+        else:
+            status = "available"
         described[name] = {
             "measures": spec.measures,
             "caveat": spec.caveat,
             "requires": spec.install_hint(),
-            "status": "available" if not missing else f"missing {', '.join(missing)}",
+            "status": status,
         }
     return described
 

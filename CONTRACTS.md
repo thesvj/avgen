@@ -320,7 +320,7 @@ load(path, state: TrainState, *, parallel: ParallelModel) -> None
 # DCP-based: reshards across a different rank count. async_save via dcp.async_save.
 export_safetensors(path, model, *, dtype=None, metadata=None)   # release artifact
 export_huggingface(path, model, ...)                            # dcp HuggingFaceStorageWriter
-class CheckpointManager:  # retention, keep_last_n, keep_every, resume-latest
+class CheckpointManager:  # retention, keep_last_n, keep_every_n_steps, resume-latest
 ```
 
 ### `avgen.telemetry`

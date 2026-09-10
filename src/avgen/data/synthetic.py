@@ -221,8 +221,12 @@ class SyntheticConfig:
         # measured on the video time grid, so that is the grid that must resolve
         # the waveform. Two samples per period is the theoretical floor; below
         # four the estimate is too noisy to assert on.
+        # Only enforced when there is audio: the guard exists to keep the
+        # ground-truth correlation recoverable, and a video-only corpus has no
+        # correlation to recover. Enforcing it unconditionally would reject
+        # perfectly good low-frame-rate text-to-video configurations.
         highest = self.max_drive_frequency_hz
-        if highest * 4.0 > self.video_fps:
+        if self.has_audio and highest * 4.0 > self.video_fps:
             raise ValueError(
                 f"the drive waveform reaches {highest} Hz (frequency "
                 f"{self.drive_frequency_hz} widened by jitter "
@@ -336,9 +340,7 @@ class AlignmentTruth:
                 no alignment to measure.
         """
         if audio.shape[-1] == 0:
-            raise ValueError(
-                "cannot measure alignment on a batch with no audio frames"
-            )
+            raise ValueError("cannot measure alignment on a batch with no audio frames")
         track = audio[:, self.audio_drive_channel].float()
         last = track.shape[-1] - 1
         # Shift forward by the lag so that video time t is compared against the
@@ -376,8 +378,8 @@ class AlignmentTruth:
         weights = covered.to(torch.float32)
         count = weights.sum(dim=1, keepdim=True)
         safe = count.clamp(min=1.0)
-        video_centred = (video_signal - (video_signal * weights).sum(1, True) / safe)
-        audio_centred = (audio_signal - (audio_signal * weights).sum(1, True) / safe)
+        video_centred = video_signal - (video_signal * weights).sum(1, True) / safe
+        audio_centred = audio_signal - (audio_signal * weights).sum(1, True) / safe
         video_centred = video_centred * weights
         audio_centred = audio_centred * weights
         numerator = (video_centred * audio_centred).sum(dim=1)
@@ -386,7 +388,8 @@ class AlignmentTruth:
         # it any two signals agree almost perfectly by construction.
         usable = (denominator > 0.0) & (count.squeeze(1) >= 3.0)
         return torch.where(
-            usable, numerator / denominator.clamp(min=1e-12),
+            usable,
+            numerator / denominator.clamp(min=1e-12),
             torch.zeros_like(numerator),
         )
 
@@ -577,9 +580,7 @@ class SyntheticSource:
             audio = self._build_audio(parameters, audio_time)
         else:
             audio_time = torch.zeros(0, dtype=torch.float32)
-            audio = torch.zeros(
-                (config.audio_channels, 0), dtype=torch.float32
-            )
+            audio = torch.zeros((config.audio_channels, 0), dtype=torch.float32)
 
         text = parameters["text"]
         text_mask = torch.ones(config.text_tokens, dtype=torch.bool)
@@ -613,9 +614,7 @@ class SyntheticSource:
             if self._cursor + self._batch_size > len(self._local_indices):
                 self._cursor = 0
                 self._epoch += 1
-            window = self._local_indices[
-                self._cursor : self._cursor + self._batch_size
-            ]
+            window = self._local_indices[self._cursor : self._cursor + self._batch_size]
             self._cursor += self._batch_size
             yield collate_samples(
                 [self[index] for index in window],

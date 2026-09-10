@@ -40,6 +40,7 @@ from avgen.parallel.dims import ParallelDims, submesh
 from avgen.parallel.env import (
     DistributedEnv,
     barrier,
+    collective_timeout,
     init_distributed,
     is_distributed_launch,
     local_rank_device,
@@ -89,6 +90,7 @@ __all__ = [
     "broadcast_object",
     "build_pipeline_schedule",
     "clip_grad_norm",
+    "collective_timeout",
     "context_parallel_region",
     "convert_to_float8",
     "data_mesh",

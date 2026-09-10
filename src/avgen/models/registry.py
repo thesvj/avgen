@@ -74,16 +74,16 @@ def _config_class_for(cls: type) -> type:
     if isinstance(declared, type):
         return declared
 
-    parameters = list(inspect.signature(cls.__init__).parameters.values())[1:]
+    # `eval_str=True` resolves the string annotations that
+    # `from __future__ import annotations` leaves behind, against the defining
+    # module's globals. Signature-of-the-class already drops `self`.
+    parameters = list(inspect.signature(cls, eval_str=True).parameters.values())
     if not parameters:
         raise TypeError(
             f"{cls.__name__} must take a config dataclass as its first "
             "constructor argument, or declare a `config_class` attribute"
         )
-    # Annotations are strings under `from __future__ import annotations`, so they
-    # have to be resolved against the defining module rather than read directly.
-    hints = get_type_hints(cls.__init__)
-    config_type = hints.get(parameters[0].name)
+    config_type = parameters[0].annotation
     if not isinstance(config_type, type) or not is_dataclass(config_type):
         raise TypeError(
             f"{cls.__name__}.__init__ parameter {parameters[0].name!r} must be "
@@ -233,7 +233,7 @@ def _coerce(config_class: type, values: Mapping[str, Any]) -> dict[str, Any]:
     Raises:
         ValueError: If a key does not name a field of the config.
     """
-    known = {field.name for field in fields(config_class)}  # type: ignore[arg-type]
+    known = {field.name for field in fields(config_class)}
     unknown = sorted(set(values) - known)
     if unknown:
         raise ValueError(
