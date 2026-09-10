@@ -616,3 +616,72 @@ class TestMixedPrecisionDoesNotCorruptMetadata:
         assert output.video.shape[:2] == stream.tokens.shape[:2]
         assert inputs.video.coords.dtype is torch.float32
         assert inputs.video.noise_level.dtype is torch.float32
+
+
+class TestSequenceDivisibilityIsCaughtAtConfigTime:
+    """An indivisible bucket must fail validation, not the first forward pass.
+
+    Context parallelism splits the token sequence; tensor parallelism splits it
+    again wherever sequence parallelism applies. If a bucket's token count does
+    not divide by that factor, avgen refuses — it will not pad implicitly,
+    because the padding would change the token count the loss normalises by and
+    make two otherwise-identical runs disagree.
+
+    The point of catching it in the config is *when*. Without this the job
+    starts, builds the mesh, materialises the model, resumes the checkpoint,
+    fills the dataloader, and only then raises from inside the objective — on a
+    cluster, minutes of a paid allocation to learn something knowable before the
+    first byte was moved, with the error surfacing far from the setting that
+    caused it.
+    """
+
+    def test_indivisible_context_degree_is_rejected(self) -> None:
+        import dataclasses
+
+        from avgen.config import RunConfig
+
+        base = RunConfig()
+        tokens = base.data.buckets[0].tokens(base.model)
+        assert tokens % 3 != 0, "pick a degree that does not divide this bucket"
+        with pytest.raises(ValueError, match="not divisible"):
+            dataclasses.replace(
+                base, parallel=dataclasses.replace(base.parallel, context=3)
+            )
+
+    def test_divisible_context_degree_is_accepted(self) -> None:
+        import dataclasses
+
+        from avgen.config import RunConfig
+
+        base = RunConfig()
+        tokens = base.data.buckets[0].tokens(base.model)
+        for degree in (2, 4, 8):
+            assert tokens % degree == 0
+            dataclasses.replace(
+                base, parallel=dataclasses.replace(base.parallel, context=degree)
+            )
+
+    def test_sequence_parallel_folds_tensor_into_the_factor(self) -> None:
+        # With sequence parallelism on, tp splits the sequence too, so the
+        # required divisor is context * tensor rather than context alone.
+        import dataclasses
+
+        from avgen.config import RunConfig
+
+        base = RunConfig()
+        tokens = base.data.buckets[0].tokens(base.model)
+        assert tokens % 3 != 0
+        with pytest.raises(ValueError, match="sequence parallel"):
+            dataclasses.replace(
+                base,
+                parallel=dataclasses.replace(
+                    base.parallel, context=1, tensor=3, sequence_parallel=True
+                ),
+            )
+        # Disabling sequence parallelism removes tensor from the divisor.
+        dataclasses.replace(
+            base,
+            parallel=dataclasses.replace(
+                base.parallel, context=1, tensor=3, sequence_parallel=False
+            ),
+        )

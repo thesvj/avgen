@@ -321,8 +321,18 @@ def linear_sigmas(
     Raises:
         ValueError: If ``steps`` is not positive or the range is invalid.
     """
-    lowest = sigma_max / steps if sigma_min is None else sigma_min
-    _require_range(steps, lowest, sigma_max)
+    _require_steps(steps)
+    # A one-step schedule evaluates sigma_max alone, so the body is a single
+    # boundary and the default spacing rule (sigma_max / steps) would put the
+    # last evaluated level at sigma_max itself — degenerate, but only because
+    # the rule has nothing to space. Take that boundary directly instead of
+    # failing the sigma_min < sigma_max check on a schedule that is well defined.
+    if sigma_min is None and steps == 1:
+        _require_sigma_max(sigma_max)
+        lowest = sigma_max
+    else:
+        lowest = sigma_max / steps if sigma_min is None else sigma_min
+        _require_range(steps, lowest, sigma_max)
     body = torch.linspace(sigma_max, lowest, steps, dtype=torch.float32, device=device)
     return _close(body)
 
@@ -368,6 +378,7 @@ def karras_sigmas(
         ValueError: If ``steps`` is not positive, ``sigma_min`` is not positive,
             or ``rho`` is not positive.
     """
+    _require_steps(steps)
     lowest = 0.002 if sigma_min is None else sigma_min
     _require_range(steps, lowest, sigma_max)
     if not math.isfinite(rho) or rho <= 0.0:
@@ -420,7 +431,14 @@ def linear_quadratic_sigmas(
             range, or ``threshold_noise`` is not strictly between 0 and
             ``sigma_max``.
     """
+    _require_steps(steps)
     _require_range(steps, sigma_max / (steps + 1), sigma_max)
+    if steps == 1 and linear_steps is None:
+        # Two regions need at least two intervals. With one step the only
+        # schedule that exists is the single boundary at sigma_max, which is
+        # what every family degenerates to; refusing to build it would make
+        # `steps=1` unusable for this name alone.
+        return _close(torch.tensor([sigma_max], dtype=torch.float32, device=device))
     split = max(steps // 2, 1) if linear_steps is None else linear_steps
     if isinstance(split, bool) or not 0 < split < steps:
         raise ValueError(f"linear_steps must be in (0, steps={steps}); got {split!r}")
@@ -633,15 +651,30 @@ class ScheduleConfig:
         return cls(**fields)
 
 
-def _require_range(steps: int, sigma_min: float, sigma_max: float) -> None:
-    """Validate the arguments every schedule family shares."""
+def _require_steps(steps: int) -> None:
+    """Validate the step count on its own.
+
+    Split out from :func:`_require_range` because families derive their default
+    ``sigma_min`` from ``steps``; doing that arithmetic first turns ``steps=0``
+    into a ``ZeroDivisionError`` instead of the ``ValueError`` the API promises.
+    """
     if isinstance(steps, bool) or steps < 1:
         raise ValueError(f"steps must be a positive integer; got {steps!r}")
+
+
+def _require_sigma_max(sigma_max: float) -> None:
+    """Validate the starting noise level on its own."""
     if not math.isfinite(sigma_max) or not 0.0 < sigma_max <= 1.0:
         raise ValueError(
             f"sigma_max must be in (0, 1] for a flow schedule; got {sigma_max!r}. "
             "Variance-exploding sigmas above 1 belong to EDM, not rectified flow."
         )
+
+
+def _require_range(steps: int, sigma_min: float, sigma_max: float) -> None:
+    """Validate the arguments every schedule family shares."""
+    _require_steps(steps)
+    _require_sigma_max(sigma_max)
     if not math.isfinite(sigma_min) or not 0.0 < sigma_min < sigma_max:
         raise ValueError(
             f"sigma_min must be in (0, sigma_max={sigma_max}); got {sigma_min!r}. "

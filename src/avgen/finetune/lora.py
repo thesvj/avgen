@@ -127,6 +127,10 @@ _DATA_PARALLEL_MESH_DIMS = frozenset(
 
 _ADAPTER_SUFFIXES = ("lora_a", "lora_b", "lora_magnitude")
 
+#: Below this a row's magnitude carries no pretrained direction to preserve, and
+#: DoRA's decomposition is undefined there. Far under any real weight norm.
+_ZERO_MAGNITUDE = 1e-12
+
 
 @dataclass(frozen=True, slots=True)
 class LoRAConfig:
@@ -502,6 +506,10 @@ class LoRALinear(nn.Linear):
         self.use_dora = bool(use_dora)
         self.scaling = self.alpha / float(self.rank)
         self.merged = False
+        # Pre-merge row norms, cached only while a DoRA adapter is merged.
+        # Not a buffer: it is transient state about the *current* merge, not
+        # something a checkpoint should carry — a saved model is never merged.
+        self._merged_norm: torch.Tensor | None = None
         self.lora_dropout: nn.Module = (
             nn.Dropout(p=dropout) if dropout > 0.0 else nn.Identity()
         )
@@ -666,7 +674,20 @@ class LoRALinear(nn.Linear):
         # initialised weight must not produce inf here, and the clamp is far
         # below any magnitude that carries signal.
         norm = torch.sqrt(_sum_of_squares(combined).clamp_min(1e-12)).detach()
-        return self.lora_magnitude / norm
+        scale = self.lora_magnitude / norm
+        # A row whose base weight is exactly zero has magnitude zero, and DoRA's
+        # decomposition is undefined there: the rescale would be 0, so the
+        # merged row is identically zero and the adapter cannot move it at all.
+        # That is not hypothetical — every DiT-zero output projection starts
+        # this way, including the text cross-attention out_proj that a style
+        # fine-tune most wants to train. Those rows fall back to plain LoRA
+        # (rescale 1), which is what DoRA degenerates to when there is no
+        # pretrained magnitude to preserve.
+        return torch.where(
+            self.lora_magnitude.detach() > _ZERO_MAGNITUDE,
+            scale,
+            torch.ones_like(scale),
+        )
 
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         """Apply the base linear plus the adapter.
@@ -696,26 +717,43 @@ class LoRALinear(nn.Linear):
     def merge(self) -> None:
         """Fold the adapter into the base weight in place.
 
+        For DoRA the pre-merge row norms are cached, because merging destroys
+        them and :meth:`unmerge` cannot reconstruct them from what is left. See
+        that method for why.
+
         Raises:
             RuntimeError: If already merged.
         """
         if self.merged:
             raise RuntimeError("adapter is already merged")
         with torch.no_grad():
-            merged = self.adapted_weight()
-            self.weight.copy_(merged)
+            if self.lora_magnitude is not None:
+                combined = self.weight + self.lora_delta()
+                self._merged_norm = torch.sqrt(
+                    _sum_of_squares(combined).clamp_min(1e-12)
+                ).clone()
+            self.weight.copy_(self.adapted_weight())
         self.merged = True
 
     def unmerge(self) -> None:
         """Undo :meth:`merge`, restoring the base weight.
 
-        Exact for plain LoRA (subtracting the same delta). For DoRA the inverse
-        divides by the rescale that was applied, which is exact in real
-        arithmetic and accurate to rounding in floating point — a merged DoRA
-        weight should not be round-tripped repeatedly.
+        Exact for plain LoRA: subtracting the same delta that was added.
+
+        DoRA needs the cache that :meth:`merge` writes, and the reason is worth
+        stating because the obvious implementation is silently wrong. A DoRA
+        merge writes ``m * (W + dW) / ||W + dW||``, whose row norms are exactly
+        ``m``. Recomputing ``||weight|| / m`` from the merged weight therefore
+        yields exactly 1.0, the rescale step becomes a no-op, and unmerge
+        returns ``m * (W + dW) / ||W + dW|| - dW`` instead of ``W`` — a few
+        percent off, with no error raised. ``||W + dW||`` is destroyed by the
+        merge and is not recoverable from the merged weight, the magnitude and
+        the delta alone, so it is cached at merge time instead. It is one scalar
+        per output row.
 
         Raises:
-            RuntimeError: If not currently merged.
+            RuntimeError: If not currently merged, or if the DoRA cache is
+                missing because the weight was merged by some other route.
         """
         if not self.merged:
             raise RuntimeError("adapter is not merged")
@@ -724,12 +762,22 @@ class LoRALinear(nn.Linear):
             if self.lora_magnitude is None:
                 self.weight.sub_(self.lora_delta())
                 return
-            # Recover the direction matrix, then remove the low-rank delta.
-            scaled = self.weight
-            norm = torch.sqrt(_sum_of_squares(scaled).clamp_min(1e-12))
-            rescale = norm / self.lora_magnitude.clamp_min(1e-12)
-            direction = scaled * rescale.unsqueeze(-1)
+            if self._merged_norm is None:
+                raise RuntimeError(
+                    "cannot unmerge a DoRA adapter without the pre-merge row "
+                    "norms; they are cached by merge() and are not recoverable "
+                    "from the merged weight"
+                )
+            # Mirror the zero-magnitude fallback in _dora_scale: those rows
+            # were merged as plain LoRA, so they unmerge as plain LoRA too.
+            rescale = torch.where(
+                self.lora_magnitude.detach() > _ZERO_MAGNITUDE,
+                self._merged_norm / self.lora_magnitude.clamp_min(1e-12),
+                torch.ones_like(self._merged_norm),
+            )
+            direction = self.weight * rescale.unsqueeze(-1)
             self.weight.copy_(direction - self.lora_delta())
+            self._merged_norm = None
 
     def extra_repr(self) -> str:
         """Return the base repr plus the adapter shape."""

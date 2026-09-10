@@ -29,6 +29,7 @@ unknown key raises, and the message includes the closest valid field name.
 
 from __future__ import annotations
 
+import copy
 import dataclasses
 import difflib
 import os
@@ -291,7 +292,11 @@ def apply_overrides(
         ConfigError: If an override is malformed, indexes a non-list, or
             indexes past the end of a list.
     """
-    result = dict(mapping)
+    # A deep copy, not dict(): a shallow one leaves nested dicts and list
+    # entries shared with the caller, so applying overrides mutates the mapping
+    # this function documents itself as leaving alone. Configs are small; the
+    # copy is free relative to being wrong.
+    result = copy.deepcopy(dict(mapping))
     for text in overrides:
         segments, value = parse_override(text)
         cursor: Any = result

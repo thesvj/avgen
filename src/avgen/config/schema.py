@@ -1252,6 +1252,37 @@ class RunConfig:
         for bucket in self.data.buckets:
             bucket.tokens(self.model)
 
+        # Every bucket's token count must divide by the factor the sequence is
+        # sharded on. Context parallelism splits it directly; tensor parallelism
+        # splits it again wherever sequence parallelism applies.
+        #
+        # Without this the run starts, builds the mesh, materialises the model,
+        # resumes the checkpoint, fills the dataloader — and only then raises
+        # from inside the objective on the first forward pass. On a cluster that
+        # is minutes of a paid allocation to learn something knowable here, and
+        # the error surfaces far from the setting that caused it.
+        shard_factor = self.parallel.context
+        if self.parallel.sequence_parallel:
+            shard_factor *= self.parallel.tensor
+        if shard_factor > 1:
+            for bucket in self.data.buckets:
+                tokens = bucket.tokens(self.model)
+                if tokens % shard_factor != 0:
+                    detail = f"parallel.context={self.parallel.context}"
+                    if self.parallel.sequence_parallel and self.parallel.tensor > 1:
+                        detail += (
+                            f" x parallel.tensor={self.parallel.tensor}"
+                            " (sequence parallel)"
+                        )
+                    raise ValueError(
+                        f"data bucket {bucket.name!r} yields {tokens} tokens, "
+                        f"which is not divisible by {shard_factor} = {detail}. "
+                        "Adjust the bucket's frames/height/width, change the "
+                        "degree, or disable parallel.sequence_parallel — avgen "
+                        "will not pad implicitly, because the padding would "
+                        "change the token count the loss normalises by."
+                    )
+
     @property
     def sequence_length(self) -> int:
         """Token count of the largest bucket, which is what has to fit."""

@@ -137,6 +137,20 @@ def _version() -> str:
         return "0.0.0+unknown (running from a source tree, not an install)"
 
 
+def _is_checkpoint_error(error: BaseException) -> bool:
+    """Whether this is DCP's ``CheckpointException``, without importing torch.
+
+    Checked by name because ``avgen.cli.main`` stays torch-free: importing
+    ``torch.distributed.checkpoint`` to identify an error would put a
+    multi-second import in front of ``avgen --help``.
+    """
+    return any(
+        cls.__module__.startswith("torch.distributed.checkpoint")
+        and cls.__name__ == "CheckpointException"
+        for cls in type(error).__mro__
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the avgen command line.
 
@@ -167,7 +181,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         # traceback for that trains them to ignore tracebacks.
         sys.stderr.write("\navgen: interrupted\n")
         return EXIT_INTERRUPT
-    except Exception as error:
+    except BaseException as error:
+        # BaseException rather than Exception for one reason:
+        # torch.distributed.checkpoint.CheckpointException derives from
+        # BaseException, so every DCP save or load failure would otherwise walk
+        # straight past this handler and out of the process as a raw traceback —
+        # and that is the class of failure a long training job hits most. Only
+        # that one exemption is made; a genuine BaseException (SystemExit, a
+        # thread kill) is re-raised untouched.
+        if not isinstance(error, Exception) and not _is_checkpoint_error(error):
+            raise
         if show_traceback:
             raise
         from avgen.config.loader import ConfigError

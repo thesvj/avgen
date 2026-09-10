@@ -65,6 +65,8 @@ from typing import TYPE_CHECKING, Any
 import torch
 import torch.distributed as dist
 import torch.distributed.checkpoint as dcp
+import torch.nn as nn
+from torch.distributed.checkpoint.state_dict import get_model_state_dict
 
 from avgen.checkpoint.stateful import (
     EMA_KEY,
@@ -88,6 +90,8 @@ __all__ = [
     "CheckpointEntry",
     "CheckpointManager",
     "load",
+    "load_ema",
+    "load_model",
     "save",
 ]
 
@@ -829,3 +833,113 @@ def load(
     return CheckpointManager(path, keep_last_n=0).load(
         state, parallel=parallel, step=step
     )
+
+
+def load_model(path: str | Path, model: nn.Module, *, strict: bool = True) -> None:
+    """Load only the model weights from a training checkpoint.
+
+    The full :func:`load` restores a whole :class:`~avgen.core.TrainState` —
+    optimizer moments, RNG streams, progress counters — and needs a live
+    optimizer and a parallelised model to do it. Everything downstream of
+    training wants something smaller: a model, and the weights that go in it.
+    Exporting a release artifact, running an evaluation, or serving a checkpoint
+    all need exactly this and nothing else.
+
+    Without it each caller reimplements a partial DCP load and gets a slightly
+    different answer about what to do with a missing key.
+
+    Args:
+        path: Checkpoint directory written by :class:`CheckpointManager`.
+        model: The model to load into, already constructed with the right
+            architecture. Under FSDP its parameters may be DTensors; DCP
+            reshards into whatever layout this model has.
+        strict: Whether a key in the model but absent from the checkpoint is an
+            error. Left true: a silently unfilled tensor is a model that
+            produces plausible noise.
+
+    Raises:
+        FileNotFoundError: If the directory holds no readable checkpoint.
+        RuntimeError: If the checkpoint's model entry cannot be read.
+    """
+    import torch.distributed.checkpoint as dcp
+    from torch.distributed.checkpoint.api import CheckpointException
+    from torch.distributed.checkpoint.state_dict import (
+        StateDictOptions,
+        set_model_state_dict,
+    )
+
+    directory = Path(path)
+    if not directory.is_dir():
+        raise FileNotFoundError(f"no checkpoint directory at {directory}")
+
+    from avgen.checkpoint.stateful import MODEL_OPTIMIZER_KEY
+
+    options = StateDictOptions(full_state_dict=False, strict=strict)
+    holder: dict[str, Any] = {
+        MODEL_OPTIMIZER_KEY: {
+            "model": get_model_state_dict(model, options=options),
+        }
+    }
+    try:
+        dcp.load(holder, checkpoint_id=str(directory))
+    except (Exception, CheckpointException) as error:
+        # CheckpointException derives from BaseException, not Exception, so it
+        # slips past every ordinary handler including the CLI's. Naming it here
+        # is what turns "missing key in checkpoint state_dict" into a sentence
+        # about this checkpoint.
+        raise RuntimeError(
+            f"could not read model weights from {directory}: {error}"
+        ) from error
+    set_model_state_dict(model, holder[MODEL_OPTIMIZER_KEY]["model"], options=options)
+
+
+def load_ema(path: str | Path, model: nn.Module, *, decay: float = 0.9999) -> None:
+    """Load a checkpoint's EMA weights **into** the given model, in place.
+
+    Published diffusion samples come from EMA weights; the raw training weights
+    are visibly worse. Exporting a release artifact or reproducing a sample
+    therefore needs the average, not the live parameters — and the average is
+    stored under its own checkpoint entry, shaped like the EMA's state rather
+    than like a model state dict.
+
+    The shadow buffers are materialised from ``model`` before the load, which is
+    what gives DCP a target to reshard into: the checkpoint may have been
+    written at a different rank count, and it is the live parameter layout that
+    decides the destination sharding.
+
+    Args:
+        path: Checkpoint directory written by :class:`CheckpointManager`.
+        model: The model to overwrite with the averaged weights. Must have the
+            architecture the checkpoint was written from.
+        decay: Decay used to construct the tracker. Immaterial to a load — the
+            stored tensors are copied verbatim — but it has to be positive for
+            the tracker to hold any shadows at all.
+
+    Raises:
+        FileNotFoundError: If the directory holds no readable checkpoint.
+        RuntimeError: If the checkpoint carries no EMA entry. That is a real
+            answer, not a fallback: silently exporting the live weights when the
+            caller asked for the average produces a worse model with no sign
+            that anything went wrong.
+    """
+    import torch.distributed.checkpoint as dcp
+    from torch.distributed.checkpoint.api import CheckpointException
+
+    from avgen.train.ema import ShardedEMA
+
+    directory = Path(path)
+    if not directory.is_dir():
+        raise FileNotFoundError(f"no checkpoint directory at {directory}")
+
+    ema = ShardedEMA(model, decay=decay)
+    holder: dict[str, Any] = {EMA_KEY: ema.state_dict()}
+    try:
+        dcp.load(holder, checkpoint_id=str(directory))
+    except (Exception, CheckpointException) as error:
+        raise RuntimeError(
+            f"could not read EMA weights from {directory}: {error}. A checkpoint "
+            "saved with train.ema_decay = 0 carries none; export without --ema, "
+            "or point at a checkpoint that has them."
+        ) from error
+    ema.load_state_dict(holder[EMA_KEY])
+    ema.copy_to(model)

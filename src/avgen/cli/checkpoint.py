@@ -125,6 +125,14 @@ def add_parser(subparsers: Any) -> argparse.ArgumentParser:
         action="store_true",
         help="export the EMA weights rather than the raw training weights",
     )
+    export.add_argument(
+        "--config",
+        default="",
+        help=(
+            "run config describing the architecture; defaults to config.yaml "
+            "beside the checkpoint"
+        ),
+    )
     add_traceback_argument(export)
     export.set_defaults(handler=run, action="export")
 
@@ -189,6 +197,30 @@ def _describe(path: Path) -> dict[str, Any]:
     return description
 
 
+def _config_beside(path: Path, override: str) -> Any:
+    """Load the run config that describes a checkpoint's architecture.
+
+    Args:
+        path: The checkpoint directory or file.
+        override: An explicit ``--config`` path, which always wins.
+
+    Returns:
+        The loaded config, or ``None`` when there is nothing to load. ``None``
+        rather than schema defaults: a wrong architecture loads a checkpoint
+        into the wrong tensors and the error it raises is about shapes, not
+        about the missing config that caused it.
+    """
+    from avgen.config import load_config
+
+    if override:
+        return load_config(override)
+    candidate = (path if path.is_dir() else path.parent) / "config.yaml"
+    if candidate.is_file():
+        emit(f"  using the config recorded beside the checkpoint: {candidate}")
+        return load_config(candidate)
+    return None
+
+
 def run(arguments: argparse.Namespace) -> int:
     """Dispatch to the requested checkpoint action.
 
@@ -248,21 +280,56 @@ def run(arguments: argparse.Namespace) -> int:
     if action == "export":
         import torch
 
+        # The exporters take a live nn.Module, not a directory: writing
+        # safetensors means gathering every (possibly sharded) parameter, which
+        # only a constructed model can describe. So the checkpoint has to be
+        # materialised into a model first, which needs the architecture — and
+        # the architecture comes from the config recorded beside the weights.
+        config = _config_beside(path, getattr(arguments, "config", ""))
+        if config is None:
+            return fail(
+                f"no config.yaml beside {path} and none passed with --config. "
+                "Exporting builds the model before writing it, so the "
+                "architecture has to come from somewhere."
+            )
+
+        build_model = require_subsystem("avgen.models", "build_model")
+        model_kwargs = require_subsystem("avgen.config.resolve", "model_kwargs")
+        model = build_model(config.model.name, model_kwargs(config))
+        model.eval()
+
+        if arguments.ema:
+            load_ema = require_subsystem("avgen.checkpoint", "load_ema")
+            load_ema(path, model, decay=config.train.ema_decay or 0.9999)
+            emit("  loaded EMA weights")
+        else:
+            load_model = require_subsystem("avgen.checkpoint", "load_model")
+            load_model(path, model)
+            emit(
+                "  loaded the live training weights. Published diffusion "
+                "samples come from EMA weights; pass --ema when the checkpoint "
+                "has them."
+            )
+
         dtypes = {
             "float32": torch.float32,
             "bfloat16": torch.bfloat16,
             "float16": torch.float16,
         }
+        dtype = dtypes.get(arguments.dtype)
         if arguments.format == "safetensors":
             export = require_subsystem("avgen.checkpoint", "export_safetensors")
+            written = export(
+                arguments.output,
+                model,
+                dtype=dtype,
+                metadata={"source": str(path), "ema": str(arguments.ema)},
+            )
         else:
+            # export_huggingface writes through DCP's storage writer, which owns
+            # the file headers; it takes no metadata mapping.
             export = require_subsystem("avgen.checkpoint", "export_huggingface")
-        written = export(
-            arguments.output,
-            path,
-            dtype=dtypes.get(arguments.dtype),
-            metadata={"source": str(path), "ema": str(arguments.ema)},
-        )
+            written = export(arguments.output, model, dtype=dtype)
         emit(f"  exported {arguments.format} to {written or arguments.output}")
         emit(
             "  this artifact is for inference and cannot be resumed from; keep "

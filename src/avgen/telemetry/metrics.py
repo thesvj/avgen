@@ -85,7 +85,15 @@ class MetricAccumulator:
             means single-replica and skips the collective entirely.
     """
 
-    __slots__ = ("_count", "_device", "_mesh", "_names", "_steps", "_totals")
+    __slots__ = (
+        "_count",
+        "_device",
+        "_is_mean",
+        "_mesh",
+        "_names",
+        "_steps",
+        "_totals",
+    )
 
     def __init__(
         self,
@@ -106,6 +114,13 @@ class MetricAccumulator:
             len(self._names), dtype=torch.float64, device=self._device
         )
         self._count = torch.zeros((), dtype=torch.float64, device=self._device)
+        # Which slots are means (weighted) versus sums (counted). Precomputed so
+        # update() stays a single fused multiply-add with no Python branching.
+        self._is_mean = torch.tensor(
+            [name in _MEAN_FIELDS for name in self._names],
+            dtype=torch.bool,
+            device=self._device,
+        )
 
     @property
     def device(self) -> torch.device:
@@ -134,9 +149,15 @@ class MetricAccumulator:
         values = torch.stack(
             [getattr(metrics, name).detach().to(torch.float64) for name in self._names]
         )
+        # The weight applies to the mean fields only. Scaling the whole buffer
+        # also scales the sum fields — token counts, non-finite and skip
+        # counters — and since this method's own docstring tells callers to pass
+        # the microbatch token count as the weight, that makes the reported
+        # token total quadratic in the tokens actually seen.
+        scale = torch.where(self._is_mean, weight, 1.0)
         # `to(self._device)` is a no-op when they already match, and a cheap
         # async copy when a caller accumulates CPU metrics on a CUDA buffer.
-        self._totals += values.to(self._device) * weight
+        self._totals += values.to(self._device) * scale
         self._count += weight
         self._steps += 1
 
@@ -182,7 +203,13 @@ class MetricAccumulator:
         for index, name in enumerate(self._names):
             total = host[index]
             result[name] = total / count if name in _MEAN_FIELDS else total
-        result["steps"] = count / (self._mesh.size() if self._mesh is not None else 1)
+        # The count is a sum of weights, not of steps — with the token-count
+        # weighting the docstring recommends, reporting it as "steps" logs
+        # tokens. The host-side step counter is what the name promises.
+        steps = torch.tensor([float(self._steps)], dtype=torch.float64)
+        if self._mesh is not None:
+            steps = all_reduce_sum(steps.to(self._device), self._mesh).cpu()
+        result["steps"] = float(steps.item())
         if reset:
             self.reset()
         return result

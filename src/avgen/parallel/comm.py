@@ -37,6 +37,7 @@ from torch.distributed.tensor import DTensor
 from avgen.parallel.dims import submesh
 
 __all__ = [
+    "all_gather_object",
     "all_reduce_max",
     "all_reduce_mean",
     "all_reduce_sum",
@@ -198,6 +199,30 @@ def broadcast_object(obj: object, *, src: int = 0) -> object:
     payload: list[object] = [obj if dist.get_rank() == src else None]
     dist.broadcast_object_list(payload, src=src)
     return payload[0]
+
+
+def all_gather_object(obj: object) -> list[object]:
+    """Gather one picklable object per rank onto *every* rank.
+
+    The counterpart to :func:`gather_object`, and the one an evaluation wants.
+    ``gather_object`` returns ``None`` everywhere except the destination, so a
+    caller that iterates the result crashes on every other rank — which is
+    exactly what happened to the documented ``run_eval_suite(gather=...)``
+    recipe. This returns a full list on all ranks, so the same code path works
+    regardless of who is asking.
+
+    Args:
+        obj: This rank's object.
+
+    Returns:
+        One entry per rank, in rank order. A single-element list when not
+        running distributed, so callers need no special case.
+    """
+    if not (dist.is_available() and dist.is_initialized()):
+        return [obj]
+    output: list[object] = [None] * dist.get_world_size()
+    dist.all_gather_object(output, obj)
+    return output
 
 
 def gather_object(obj: object, *, dst: int = 0) -> list[object] | None:

@@ -278,21 +278,14 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
 
         if is_distributed_launch():
             from avgen.config.resolve import build_parallel_dims
-            from avgen.parallel.comm import gather_object
+            from avgen.parallel.comm import all_gather_object
 
             env = init_distributed()
             dims = build_parallel_dims(configuration, world_size=env.world_size)
             mesh = dims.build_mesh(env.device.type)
             data_rank, data_world = dims.data_coordinates(mesh)
 
-            def gather(payload: Any) -> list[Any]:
-                # gather_object returns None on every rank that is not the
-                # destination, and the suite iterates whatever it gets back —
-                # so handing it the raw function raises TypeError on ranks
-                # 1..N-1. Only rank 0 writes the report, so an empty list is
-                # both correct and the cheapest thing to merge.
-                collected = gather_object(payload)
-                return collected if collected is not None else []
+            gather = all_gather_object
 
     except Exception:
         data_rank, data_world, gather = 0, 1, None
@@ -341,6 +334,7 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
         prompts=prompts,
         decoded=settings.decode,
         gather=gather,
+        data_rank=data_rank,
         run_name=configuration.resolved_run_name(),
         step=arguments.step,
     )

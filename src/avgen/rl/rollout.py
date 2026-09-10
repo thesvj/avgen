@@ -100,15 +100,30 @@ def model_velocity_fn(
 
     Builds a :class:`~avgen.core.model_input.ModelInput` per call and unfolds the
     model's token-space output back into the latent grid the sampler works in.
-    Imported lazily so this module stands alone.
+
+    **Conditioning is per prompt and gathered by ``prompt_index``, and both
+    halves of that matter.** During a rollout the batch is
+    ``num_prompts * group_size`` rows in prompt order, so indexing positionally
+    happens to be right. During the update it is not: ``iter_minibatches``
+    shuffles across the whole (trajectory, step) grid, so row ``i`` of a
+    minibatch belongs to ``prompt_index[i]``, not to prompt ``i``. Ignoring the
+    index there computes a finite, plausible-looking policy gradient against the
+    wrong prompt — the ratio still starts at 1.0 because both sides of it use
+    the same wrong conditioning, so nothing in the metrics gives it away.
+
+    Geometry is broadcast rather than closed over at a fixed batch size, so the
+    same velocity function serves a rollout of ``num_prompts * group_size`` rows
+    and an update minibatch of ``minibatch_size`` rows.
 
     Args:
         model: Any module implementing ``forward(ModelInput) -> ModelOutput``.
         patchifier: The model's patchifier.
-        positions: ``(batch, frames)`` physical frame times in seconds.
-        mask: ``(batch, frames, height, width)`` token validity.
-        text_features: ``(batch, tokens, width)`` frozen text context.
-        text_mask: ``(batch, tokens)`` text validity.
+        positions: ``(frames,)`` or ``(1, frames)`` or ``(batch, frames)``
+            physical frame times in seconds. Broadcast to the incoming batch.
+        mask: Token validity, broadcast the same way.
+        text_features: ``(num_prompts, tokens, width)`` frozen text context, one
+            row per distinct prompt.
+        text_mask: ``(num_prompts, tokens)`` text validity.
 
     Returns:
         A callable satisfying :class:`VelocityFn`.
@@ -117,22 +132,42 @@ def model_velocity_fn(
     from avgen.core.patchify import unpatchify_grid
     from avgen.core.tokens import TextContext, TokenStream
 
+    def _broadcast(tensor: torch.Tensor, batch: int) -> torch.Tensor:
+        """Expand per-sample geometry to the incoming batch size."""
+        if tensor.shape[0] == batch:
+            return tensor
+        row = tensor if tensor.dim() == 1 else tensor[0]
+        return row.unsqueeze(0).expand(batch, *row.shape)
+
     def _velocity(
         sample: torch.Tensor, sigma: torch.Tensor, *, prompt_index: torch.Tensor
     ) -> torch.Tensor:
-        del prompt_index  # conditioning is already expanded to the group
+        batch = sample.shape[0]
         stream = patchifier.to_tokens(
             sample,
-            positions=positions,
-            mask=mask,
+            positions=_broadcast(positions, batch),
+            mask=_broadcast(mask, batch),
             noise_level=sigma.to(torch.float32),
         )
+        # Always gather. Deciding between "already expanded" and "per prompt"
+        # by comparing row counts is ambiguous exactly when it matters — a
+        # minibatch that happens to be as wide as the prompt set would take the
+        # wrong branch silently — so the contract is one row per prompt, full
+        # stop, and a mismatch is an error rather than a guess.
+        index = prompt_index.to(text_features.device).long()
+        if int(index.max()) >= text_features.shape[0]:
+            raise ValueError(
+                f"prompt_index reaches {int(index.max())} but text_features has "
+                f"{text_features.shape[0]} rows. model_velocity_fn expects one "
+                "row per distinct prompt, not one per rollout sample; pass the "
+                "prompt set's encodings, and generate_group will index them."
+            )
+        gathered_features = text_features.index_select(0, index)
+        gathered_mask = text_mask.index_select(0, index)
         inputs = ModelInput(
             video=stream,
-            audio=TokenStream.empty_like(
-                sample.shape[0], stream.width, device=sample.device
-            ),
-            text=TextContext(features=text_features, mask=text_mask),
+            audio=TokenStream.empty_like(batch, stream.width, device=sample.device),
+            text=TextContext(features=gathered_features, mask=gathered_mask),
         )
         output = model(inputs)
         return unpatchify_grid(output.video, stream.layout)

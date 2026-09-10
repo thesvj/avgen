@@ -217,13 +217,33 @@ def _gather_states(
     bundle: MetricBundle,
     *,
     gather: Callable[[Any], list[Any]] | None,
+    data_rank: int = 0,
 ) -> None:
-    """Merge every rank's sufficient statistics into this rank's metrics."""
+    """Merge every *other* rank's sufficient statistics into this rank's metrics.
+
+    Skipping this rank's own slot has to be done by index, not by identity.
+    ``dist.gather_object`` serialises and deserialises, so the entry it returns
+    for the local rank is an equal-but-distinct object and an ``is`` check never
+    fires — the local statistics get merged into themselves and every number in
+    a distributed evaluation comes out biased toward whichever rank computed it.
+
+    Args:
+        bundle: The metrics holding this rank's partial state.
+        gather: Callable returning one entry per rank, in rank order, or an
+            empty list on a rank that is not the gather destination.
+        data_rank: This rank's position in that list, used to skip its own
+            entry when merging the gathered statistics.
+    """
     if gather is None:
         return
     local = {name: metric.state() for name, metric in bundle.metrics.items()}
-    for remote in gather(local):
-        if remote is local or not isinstance(remote, dict):
+    collected = gather(local)
+    if not collected:
+        # A destination-only gather returns nothing on other ranks. Their
+        # metrics stay local, which is correct: only the destination reports.
+        return
+    for index, remote in enumerate(collected):
+        if index == data_rank or not isinstance(remote, dict):
             continue
         for name, state in remote.items():
             metric = bundle.metrics.get(name)
@@ -240,6 +260,7 @@ def run_eval_suite(
     decoded: bool = False,
     metric_options: Mapping[str, Mapping[str, Any]] | None = None,
     gather: Callable[[Any], list[Any]] | None = None,
+    data_rank: int = 0,
     run_name: str = "",
     step: int = 0,
     notes: str = "",
@@ -265,8 +286,11 @@ def run_eval_suite(
         metric_options: Per-metric constructor arguments.
         gather: Callable performing an all-gather of a picklable object across
             the data-parallel group, e.g.
-            ``functools.partial(avgen.parallel.gather_object)``. ``None`` runs
+            ``functools.partial(avgen.parallel.all_gather_object)``. ``None`` runs
             single-process.
+        data_rank: This rank's index within the data-parallel product. It is the
+            position of this rank's own entry in the gathered list, and merging
+            that entry back into itself biases every number toward this rank.
         run_name: Training run being evaluated.
         step: Training step of the evaluated checkpoint.
         notes: Free text carried into the report.
@@ -308,7 +332,7 @@ def run_eval_suite(
             bundle.metrics.pop(name)
             bundle.skipped.setdefault(name, "no batch supplied its required inputs")
 
-    _gather_states(bundle, gather=gather)
+    _gather_states(bundle, gather=gather, data_rank=data_rank)
 
     values: dict[str, float] = {}
     for name, metric in bundle.metrics.items():
@@ -324,7 +348,12 @@ def run_eval_suite(
 
     total = seen
     if gather is not None:
-        total = sum(int(count) for count in gather(seen))
+        # A destination-only gather (``dist.gather_object``) returns nothing off
+        # the destination rank. Those ranks keep their local count, matching the
+        # local statistics ``_gather_states`` left them with.
+        counts = gather(seen)
+        if counts:
+            total = sum(int(count) for count in counts)
 
     resolved_pin = EvalPin(
         checkpoint=pin.checkpoint,

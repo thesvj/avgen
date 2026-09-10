@@ -21,6 +21,7 @@ from avgen.parallel.activation import (
 )
 from avgen.parallel.apply import ParallelConfig, ParallelModel, parallelize
 from avgen.parallel.comm import (
+    all_gather_object,
     all_reduce_max,
     all_reduce_mean,
     all_reduce_sum,
@@ -80,6 +81,7 @@ __all__ = [
     "PrecisionConfig",
     "TensorParallelPlan",
     "TensorParallelizable",
+    "all_gather_object",
     "all_reduce_max",
     "all_reduce_mean",
     "all_reduce_sum",

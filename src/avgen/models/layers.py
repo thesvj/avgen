@@ -54,6 +54,7 @@ __all__ = [
     "TimestepEmbedding",
     "init_linear",
     "init_norm",
+    "match_dtype",
     "modulate",
     "rms_norm",
     "sinusoidal_embedding",
@@ -115,6 +116,38 @@ class FusedRMSNorm(nn.RMSNorm):
         if weight is not None and weight.dtype != hidden.dtype:
             weight = weight.to(hidden.dtype)
         return F.rms_norm(hidden, self.normalized_shape, weight, self.eps)
+
+
+def match_dtype(tensor: torch.Tensor, module: nn.Module) -> torch.Tensor:
+    """Cast a tensor to the dtype of a module's weights.
+
+    Under FSDP2 the parameters sit in the compute dtype while the batch arrives
+    in float32, and avgen deliberately does not let FSDP cast forward inputs
+    wholesale — coordinates and noise levels are physical quantities that lose
+    meaning in bfloat16 (see
+    :meth:`avgen.parallel.precision.PrecisionConfig.fsdp_policy`). So the cast
+    happens here instead: once, at each point where an externally-supplied
+    tensor meets a projection, and never on the metadata.
+
+    The cast is a no-op when the dtypes already agree, so the single-device and
+    autocast paths are unaffected.
+
+    Args:
+        tensor: The externally-supplied tensor.
+        module: The module whose weight dtype to match.
+
+    Returns:
+        The tensor in the module's weight dtype.
+
+    Raises:
+        AttributeError: If the module exposes no ``weight``.
+    """
+    weight = getattr(module, "weight", None)
+    if weight is None:
+        raise AttributeError(
+            f"{type(module).__name__} has no weight to match a dtype against"
+        )
+    return tensor if tensor.dtype == weight.dtype else tensor.to(weight.dtype)
 
 
 def rms_norm(width: int, *, eps: float = 1e-6) -> nn.RMSNorm:

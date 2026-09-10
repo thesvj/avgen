@@ -287,11 +287,15 @@ def normalize_latents(
     Raises:
         ValueError: If the channel axis does not match the statistics.
     """
+    # Checked before the identity shortcut. Identity statistics still describe a
+    # specific codec's channel count, and a mismatch means the caller paired
+    # latents with the wrong codec — a config error that must not become
+    # invisible just because this particular codec happens to need no rescale.
+    _require_channels(latents, statistics)
     if statistics.is_identity:
         # Skipping is not just an optimisation: it keeps a bf16 latent cache
         # bit-identical rather than round-tripping through a no-op multiply.
         return latents
-    _require_channels(latents, statistics)
     mean, std = statistics.tensors(
         ndim=latents.ndim, device=latents.device, dtype=torch.float32
     )
@@ -318,9 +322,9 @@ def denormalize_latents(
     Raises:
         ValueError: If the channel axis does not match the statistics.
     """
+    _require_channels(latents, statistics)
     if statistics.is_identity:
         return latents
-    _require_channels(latents, statistics)
     mean, std = statistics.tensors(
         ndim=latents.ndim, device=latents.device, dtype=torch.float32
     )

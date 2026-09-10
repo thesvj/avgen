@@ -37,6 +37,8 @@ from avgen.checkpoint.manager import (
     CheckpointEntry,
     CheckpointManager,
     load,
+    load_ema,
+    load_model,
     save,
 )
 from avgen.checkpoint.stateful import (
@@ -78,5 +80,7 @@ __all__ = [
     "export_safetensors",
     "import_safetensors",
     "load",
+    "load_ema",
+    "load_model",
     "save",
 ]
