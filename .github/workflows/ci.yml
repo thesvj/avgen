@@ -1,0 +1,195 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+
+# A new push to a pull request makes the previous run's answer irrelevant.
+# Cancel it rather than paying for it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  # CI has no GPU, and the default torch wheel drags roughly 2.5 GB of CUDA
+  # runtime with it. The CPU build is the same API for everything this job
+  # exercises, and it turns a five-minute install into a thirty-second one.
+  UV_TORCH_BACKEND: cpu
+  FORCE_COLOR: "1"
+
+jobs:
+  lint:
+    name: ruff + mypy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install
+        run: uv sync --group dev
+
+      - name: ruff check
+        run: uv run ruff check src tests examples benchmarks docs
+
+      - name: ruff format --check
+        run: uv run ruff format --check src tests examples benchmarks docs
+
+      # mypy --strict is a hard gate: the frozen contracts in CONTRACTS.md are
+      # only worth anything if the types actually hold.
+      - name: mypy --strict
+        run: uv run mypy
+
+  test:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install with every extra
+        run: uv sync --all-extras --group dev --python ${{ matrix.python-version }}
+
+      # Markers are declared in pyproject.toml. gpu/multigpu run nightly on a
+      # self-hosted runner instead; see gpu-nightly.yml.
+      - name: pytest
+        run: >-
+          uv run pytest
+          -m "not gpu and not multigpu"
+          --cov=avgen --cov-report=xml --cov-report=term-missing
+          -n auto
+
+      - name: Upload coverage
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
+
+  minimal-import:
+    name: import on core dependencies only
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      # CONTRACTS.md §6.7 and §6.11: the package must import with only torch,
+      # numpy, pyyaml and safetensors present, and must make no torch.cuda call
+      # at import time. Both rules are invisible to the main test job, which
+      # installs every extra on a machine that has no GPU either way. This job
+      # is the only place they are actually enforced.
+      - name: Install core only
+        run: uv sync --no-dev
+
+      - name: Import every public subpackage
+        run: |
+          uv run python - <<'PY'
+          import importlib
+          modules = [
+              "avgen",
+              "avgen.core",
+              "avgen.parallel",
+              "avgen.simulate",
+              "avgen.models",
+              "avgen.train",
+              "avgen.data",
+              "avgen.checkpoint",
+              "avgen.telemetry",
+              "avgen.infer",
+              "avgen.codecs",
+              "avgen.finetune",
+              "avgen.rl",
+              "avgen.eval",
+              "avgen.config",
+              "avgen.cli",
+          ]
+          for name in modules:
+              importlib.import_module(name)
+              print("imported", name)
+          PY
+
+      - name: Fail if an optional dependency leaked into the import path
+        run: |
+          uv run python - <<'PY'
+          import sys
+
+          import avgen  # noqa: F401
+
+          forbidden = [
+              "transformers", "diffusers", "accelerate", "sentencepiece",
+              "pyarrow", "av", "torchaudio", "tensorboard", "wandb",
+              "torchao", "torchft", "ray", "deepspeed", "megatron",
+              "lightning", "pytorch_lightning",
+          ]
+          leaked = sorted(name for name in forbidden if name in sys.modules)
+          if leaked:
+              raise SystemExit(
+                  "optional dependencies imported at module scope: "
+                  + ", ".join(leaked)
+                  + "\nImport them inside the function that needs them and "
+                  "raise RuntimeError naming the extra (CONTRACTS.md §6.7)."
+              )
+          print("import path is clean")
+          PY
+
+  build:
+    name: build sdist + wheel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Build
+        run: uv build
+
+      # Catches a broken README or a malformed classifier before a tag exists,
+      # which is the only time it is cheap to fix.
+      - name: Check metadata
+        run: uvx twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-ci
+          path: dist/

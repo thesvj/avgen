@@ -1,0 +1,68 @@
+avgen
+Copyright 2026 The avgen authors
+
+This product includes software developed by The avgen authors
+(https://github.com/avgen-project/avgen).
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this file except in compliance with the License. You may obtain a copy of the
+License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied. See the License for the
+specific language governing permissions and limitations under the License.
+
+------------------------------------------------------------------------------
+Third-party attributions
+------------------------------------------------------------------------------
+
+avgen depends on, and at runtime is used together with, third-party software
+distributed under its own terms. avgen vendors no third-party source. The
+notices below cover the dependencies whose licenses require attribution when
+avgen is redistributed.
+
+PyTorch
+    Copyright (c) Meta Platforms, Inc. and affiliates.
+    Licensed under the BSD 3-Clause License.
+    https://github.com/pytorch/pytorch
+
+NumPy
+    Copyright (c) 2005-present, NumPy Developers.
+    Licensed under the BSD 3-Clause License.
+    https://github.com/numpy/numpy
+
+PyYAML
+    Copyright (c) 2017-2021 Ingy dot Net; Copyright (c) 2006-2016 Kirill Simonov.
+    Licensed under the MIT License.
+    https://github.com/yaml/pyyaml
+
+safetensors
+    Copyright (c) Hugging Face.
+    Licensed under the Apache License, Version 2.0.
+    https://github.com/huggingface/safetensors
+
+Optional extras (`text`, `codecs`, `data`, `tracking`, `quant`,
+`fault-tolerance`) pull in further packages — transformers, diffusers,
+accelerate, sentencepiece, pyarrow, PyAV, torchaudio, tensorboard, torchao,
+torchft — each under its own license. Installing an extra makes those terms
+apply to your installation; consult each project for its notice.
+
+Design and technique attributions, which carry no license obligation but are
+owed intellectually:
+
+    The five-axis parallelism decomposition, the mesh dimension ordering, and
+    the distributed-checkpoint resharding approach follow the design
+    established by torchtitan (Meta Platforms, BSD 3-Clause).
+
+    The rectified-flow objective and the resolution-dependent timestep shift
+    follow the flow-matching literature and the Stable Diffusion 3 formulation
+    of the shift.
+
+    The execution-trace export path targets the MLCommons Chakra schema and the
+    ASTRA-sim simulator.
+
+If you add a dependency that requires attribution, add it to this file in the
+same pull request.

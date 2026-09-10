@@ -1,0 +1,18 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or usage help
+    url: https://github.com/avgen-project/avgen/discussions/categories/q-a
+    about: >-
+      "How do I ...", "which parallelism should I use", "is this expected" —
+      ask in Discussions. Include your world size and parallelism degrees.
+  - name: Show what you built
+    url: https://github.com/avgen-project/avgen/discussions/categories/show-and-tell
+    about: Models, results, and configs trained with avgen.
+  - name: Security vulnerability
+    url: https://github.com/avgen-project/avgen/security/advisories/new
+    about: >-
+      Report privately through GitHub Security Advisories. Never open a public
+      issue for a security problem — see SECURITY.md.
+  - name: Contributing guide
+    url: https://github.com/avgen-project/avgen/blob/main/CONTRIBUTING.md
+    about: Dev setup, the fast test subset, the DCO policy, and how to extend avgen.

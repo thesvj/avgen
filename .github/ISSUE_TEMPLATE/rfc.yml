@@ -1,0 +1,124 @@
+name: RFC
+description: Propose a change to a contract, a format, a default, or a public API.
+title: "[rfc]: "
+labels: ["rfc", "needs-discussion"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        An RFC is required for any change that:
+
+        - alters a frozen contract in `CONTRACTS.md` §3 or §4,
+        - changes the meaning, name, or ordering of a mesh dimension,
+        - changes the on-disk format of a checkpoint, dataset shard, or config,
+        - removes or renames a public symbol,
+        - changes a default that silently changes training results — the
+          timestep shift, the RNG stream layout, the loss reduction mesh, the
+          default parallelism plan,
+        - adds a **required** dependency to the core package.
+
+        Adding an optional extra, a registry entry, or a new module does not
+        need an RFC — open a feature request.
+
+        Comment period is ten working days. See `GOVERNANCE.md`.
+
+  - type: input
+    id: summary
+    attributes:
+      label: One-line summary
+      placeholder: "Flatten dp_shard with cp for the FSDP mesh only when cp is intra-node"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: >-
+        What is broken or impossible today, with a concrete case. Numbers if you
+        have them. Do not describe the solution here.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: >-
+        The new contract, written out as it would appear in `CONTRACTS.md` —
+        signatures, dataclass fields, mesh dimension names, file layout. If a
+        reviewer has to infer the API from prose, the RFC is not ready.
+      render: python
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: >-
+        At least two, and why each lost. Include "do nothing". An RFC with no
+        alternatives section has not been thought about yet.
+    validations:
+      required: true
+
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Compatibility impact
+      description: >-
+        What breaks, for whom. Existing checkpoints? Existing configs? Loss
+        curves — will an unchanged config now train differently? Name it
+        explicitly; a silent numerical change is the worst outcome this process
+        exists to prevent.
+    validations:
+      required: true
+
+  - type: textarea
+    id: simulator
+    attributes:
+      label: Simulator evidence
+      description: >-
+        Required for anything touching parallelism, memory, or communication.
+        Paste `make simulate` output before and after, at world sizes 8, 64,
+        512, and 1024. Say which reference plans changed and by how much.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: migration
+    attributes:
+      label: Migration plan
+      description: >-
+        Deprecation shim, the release it lands in, the release it is removed in,
+        and what a user has to edit. Before 1.0 a shim is required wherever one
+        is technically possible.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: What kind of change is this?
+      options:
+        - Frozen core contract (CONTRACTS.md §3)
+        - Subsystem contract (CONTRACTS.md §4)
+        - Mesh dimension semantics or ordering
+        - On-disk format (checkpoint / shard / config)
+        - Public API removal or rename
+        - Default that changes training results
+        - New required core dependency
+        - Governance or process
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Readiness
+      options:
+        - label: I have read `GOVERNANCE.md` and understand the comment period and decision process.
+          required: true
+        - label: I am willing to implement this if it is accepted.
+        - label: A prototype exists (link it in the proposal).

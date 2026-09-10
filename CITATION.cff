@@ -1,0 +1,35 @@
+cff-version: 1.2.0
+message: "If you use avgen in your research, please cite it as below."
+title: "avgen: a PyTorch-native framework for training video and audio-video generation models at scale"
+abstract: >-
+  avgen is an open-source PyTorch framework for pretraining, finetuning,
+  inference, and reinforcement-learning post-training of video and audio-video
+  diffusion transformers. Its model interior is sequence-first: dense latent
+  grids exist only at the data and codec boundary, and everything in between is
+  a token stream carrying explicit physical coordinates, which is what makes
+  context parallelism and variable-resolution batching possible. Distributed
+  execution is entirely PyTorch-native, composing five explicit parallelism axes
+  (replicated data, sharded data, context, tensor, and pipeline) over DeviceMesh
+  and DTensor, with FSDP2, ring attention, and resharding Distributed
+  Checkpoints. avgen also ships a simulator that validates a parallelism plan at
+  any world size on a single CPU machine, so a thousand-GPU configuration can be
+  reviewed before it is launched.
+type: software
+version: 0.1.0
+license: Apache-2.0
+repository-code: "https://github.com/avgen-project/avgen"
+url: "https://avgen-project.github.io/avgen"
+authors:
+  - name: "The avgen authors"
+    website: "https://github.com/avgen-project/avgen"
+keywords:
+  - pytorch
+  - video-generation
+  - diffusion-transformer
+  - flow-matching
+  - distributed-training
+  - fsdp
+  - tensor-parallel
+  - context-parallel
+  - pipeline-parallel
+  - machine-learning-systems

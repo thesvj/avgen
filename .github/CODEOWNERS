@@ -1,0 +1,58 @@
+# Code ownership mirrors the subsystem table in CONTRACTS.md §5.
+#
+# A CODEOWNERS entry means "this person's review is required", not "only this
+# person may change it". Later rules win, so the most specific rule for a path
+# is the one that applies.
+#
+# Replace the team handles below with real GitHub teams before the repository
+# is made public; an entry pointing at a team that does not exist silently
+# requests no review at all.
+
+# Fallback: anything not claimed below.
+*                                   @avgen-project/maintainers
+
+# ---------------------------------------------------------------- Frozen core
+# These are the contracts every other subsystem imports. Changes here need the
+# core maintainers and, for anything in CONTRACTS.md §3 or §4, an accepted RFC.
+/src/avgen/core/                    @avgen-project/core-maintainers
+/src/avgen/parallel/                @avgen-project/parallel-maintainers
+/src/avgen/simulate/                @avgen-project/parallel-maintainers
+/src/avgen/__init__.py              @avgen-project/core-maintainers
+/CONTRACTS.md                       @avgen-project/steering
+/README.md                          @avgen-project/steering
+
+# ------------------------------------------------------------------ Subsystems
+/src/avgen/models/                  @avgen-project/model-maintainers
+/src/avgen/train/                   @avgen-project/train-maintainers
+/src/avgen/data/                    @avgen-project/data-maintainers
+/src/avgen/checkpoint/              @avgen-project/checkpoint-maintainers
+/src/avgen/telemetry/               @avgen-project/checkpoint-maintainers
+/src/avgen/infer/                   @avgen-project/infer-maintainers
+/src/avgen/codecs/                  @avgen-project/infer-maintainers
+/src/avgen/finetune/                @avgen-project/posttrain-maintainers
+/src/avgen/rl/                      @avgen-project/posttrain-maintainers
+/src/avgen/eval/                    @avgen-project/eval-maintainers
+/src/avgen/config/                  @avgen-project/eval-maintainers
+/src/avgen/cli/                     @avgen-project/eval-maintainers
+/configs/                           @avgen-project/eval-maintainers
+
+# --------------------------------------------------------------- Docs and CI
+/docs/                              @avgen-project/docs-maintainers
+/mkdocs.yml                         @avgen-project/docs-maintainers
+/.github/                           @avgen-project/docs-maintainers
+/Makefile                           @avgen-project/docs-maintainers
+/.pre-commit-config.yaml            @avgen-project/docs-maintainers
+
+# The simulator CI gate encodes the project's scale policy: its thresholds are
+# a maintainer decision, not a docs edit.
+/.github/workflows/simulate.yml     @avgen-project/parallel-maintainers
+/.github/scripts/                   @avgen-project/parallel-maintainers
+/.github/reference_plans.json       @avgen-project/parallel-maintainers
+
+# ------------------------------------------------------------- Release surface
+/pyproject.toml                     @avgen-project/steering
+/.github/workflows/release.yml      @avgen-project/steering
+/GOVERNANCE.md                      @avgen-project/steering
+/SECURITY.md                        @avgen-project/steering
+/CITATION.cff                       @avgen-project/steering
+/NOTICE                             @avgen-project/steering

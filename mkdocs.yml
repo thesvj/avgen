@@ -1,0 +1,152 @@
+site_name: avgen
+site_description: >-
+  A PyTorch-native framework for training video and audio-video generation
+  models at scale.
+site_url: https://avgen-project.github.io/avgen
+repo_url: https://github.com/avgen-project/avgen
+repo_name: avgen-project/avgen
+edit_uri: edit/main/docs/
+copyright: Copyright &copy; 2026 The avgen authors — Apache-2.0
+
+docs_dir: docs
+site_dir: site
+
+# A missing page or a broken cross-reference should break the build, not ship
+# a site with a hole in it. CI runs `mkdocs build --strict`.
+strict: true
+
+theme:
+  name: material
+  language: en
+  icon:
+    repo: fontawesome/brands/github
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.action.edit
+    - content.tabs.link
+  palette:
+    - media: "(prefers-color-scheme)"
+      toggle:
+        icon: material/brightness-auto
+        name: Follow the system theme
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+plugins:
+  - search
+  # gen-files runs docs/gen_ref_pages.py at build time, walking src/avgen and
+  # writing one stub page per module plus a SUMMARY.md. Nothing under
+  # docs/reference/ is committed; it is generated and gitignored.
+  - gen-files:
+      scripts:
+        - docs/gen_ref_pages.py
+  - literate-nav:
+      nav_file: SUMMARY.md
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            docstring_section_style: table
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            show_if_no_docstring: false
+            inherited_members: true
+            members_order: source
+            filters: ["!^_"]
+            separate_signature: true
+            show_signature_annotations: true
+            signature_crossrefs: true
+            merge_init_into_class: true
+            docstring_options:
+              ignore_init_summary: true
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Getting started:
+      - Installation: getting-started/installation.md
+      - Quickstart: getting-started/quickstart.md
+      - Your first training run: getting-started/first-training-run.md
+  - Guides:
+      - Parallelism: guides/parallelism.md
+      - Context parallelism for video: guides/context-parallel-for-video.md
+      - Memory: guides/memory.md
+      - Simulation: guides/simulation.md
+      - Scaling to 1000 GPUs: guides/scaling-to-1000-gpus.md
+      - Data pipeline: guides/data-pipeline.md
+      - Checkpointing: guides/checkpointing.md
+      - Finetuning: guides/finetuning.md
+      - Reinforcement learning: guides/rl.md
+      - Inference: guides/inference.md
+      - Troubleshooting: guides/troubleshooting.md
+  - Design:
+      - Architecture: design/architecture.md
+      - Sequence-first: design/sequence-first.md
+      - Contracts: design/contracts.md
+      - RNG and determinism: design/rng-and-determinism.md
+      - Adding a model: design/adding-a-model.md
+      - Adding a parallelism plan: design/adding-a-parallelism-plan.md
+  - API reference: reference/
+  - Project:
+      - Contributing: https://github.com/avgen-project/avgen/blob/main/CONTRIBUTING.md
+      - Governance: https://github.com/avgen-project/avgen/blob/main/GOVERNANCE.md
+      - Security: https://github.com/avgen-project/avgen/blob/main/SECURITY.md
+      - Changelog: https://github.com/avgen-project/avgen/blob/main/CHANGELOG.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/avgen-project/avgen
+
+watch:
+  - src/avgen

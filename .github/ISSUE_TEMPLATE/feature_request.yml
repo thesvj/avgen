@@ -1,0 +1,92 @@
+name: Feature request
+description: Propose something avgen should be able to do.
+title: "[feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem. A request that opens with a solution usually
+        describes the wrong one.
+
+        If this would change a frozen contract in `CONTRACTS.md`, a mesh
+        dimension, an on-disk format, a public symbol, or a default that alters
+        training results, open an **RFC** instead — those need a written
+        proposal and a comment period.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What are you trying to do that avgen makes hard or impossible today?
+        Be concrete: the model, the scale, the data, what you tried.
+      placeholder: >-
+        Training a 14B AV model on 4-second 1080p clips needs cp=32, but cp
+        above 16 is rejected by the plan search, so the only route is pipeline
+        parallelism, which costs 20% to bubbles at this depth.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like avgen to do
+      description: The behaviour you want. API sketch welcome, not required.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+      description: >-
+        Including "do nothing" and "solve it outside avgen". Say why each one
+        loses — this is the section that decides whether the feature is worth
+        its maintenance cost.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this touch?
+      multiple: true
+      options:
+        - core (tokens, batch, patchify, rng, state, metrics)
+        - parallel (fsdp, tensor, context, pipeline, precision)
+        - simulate (memory, comms, compute, plan, chakra)
+        - models
+        - train (objective, timestep, schedule, optimizer, trainer)
+        - data (sources, buckets, shards, loader)
+        - checkpoint and telemetry
+        - infer and codecs
+        - finetune and rl
+        - eval, config, cli
+        - docs and CI
+    validations:
+      required: true
+
+  - type: dropdown
+    id: dependencies
+    attributes:
+      label: Does this need a new dependency?
+      description: >-
+        The core package depends on torch, numpy, pyyaml and safetensors, and
+        nothing else. Anything heavier must be an opt-in extra imported lazily.
+        Ray, DeepSpeed, Megatron, Accelerate and Lightning are not candidates:
+        avgen's distributed layer is PyTorch-native by design.
+      options:
+        - "No new dependency"
+        - "A new optional extra"
+        - "A new core dependency (expect this to be pushed back on)"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Would you be willing to implement it?
+      options:
+        - label: I would like to implement this myself
+        - label: I could help test it at scale
