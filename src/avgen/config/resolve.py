@@ -401,5 +401,5 @@ def build_model(config: RunConfig, *, meta: bool = False) -> nn.Module:
         ) from error
 
     context = torch.device("meta") if meta else contextlib.nullcontext()
-    with context:  # type: ignore[union-attr]
+    with context:
         return _build(config.model.name, model_kwargs(config))

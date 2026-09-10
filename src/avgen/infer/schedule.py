@@ -127,19 +127,19 @@ def resolution_shift(
     Raises:
         ValueError: If the anchors coincide or a length is not positive.
     """
-    for name, value in (
+    for name, length in (
         ("sequence_length", sequence_length),
         ("base_length", base_length),
         ("max_length", max_length),
     ):
-        if isinstance(value, bool) or value < 1:
-            raise ValueError(f"{name} must be a positive integer; got {value!r}")
+        if isinstance(length, bool) or length < 1:
+            raise ValueError(f"{name} must be a positive integer; got {length!r}")
     if base_length == max_length:
         raise ValueError(
             f"base_length and max_length must differ; both are {base_length}"
         )
     slope = (max_shift - base_shift) / (max_length - base_length)
-    value = base_shift + slope * (sequence_length - base_length)
+    value: float = base_shift + slope * (sequence_length - base_length)
     low, high = min(base_shift, max_shift), max(base_shift, max_shift)
     value = min(max(value, low), high)
     return math.exp(value) if exponential else value

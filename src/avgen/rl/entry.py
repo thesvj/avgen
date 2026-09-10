@@ -121,46 +121,141 @@ def _run_dpo(config: RunConfig) -> None:
             close()
 
 
+def _load_prompts(path: str) -> list[str]:
+    """Read the prompt set GRPO rolls out from.
+
+    Args:
+        path: Newline-delimited prompt file.
+
+    Returns:
+        The non-empty prompts, in file order.
+
+    Raises:
+        ValueError: If the path is unset or the file yields no prompts. GRPO
+            generates from prompts rather than reading clean latents, so there
+            is nothing for the data source to supply and no sensible default.
+    """
+    from pathlib import Path
+
+    if not path:
+        raise ValueError(
+            "rl.prompts_file is unset. GRPO rolls out from prompts rather than "
+            "reading clean latents, so the data source supplies nothing and "
+            "there is no default to fall back on."
+        )
+    lines = [
+        line.strip()
+        for line in Path(path).read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    if not lines:
+        raise ValueError(f"rl.prompts_file {path!r} contains no prompts")
+    return lines
+
+
 def _run_grpo(config: RunConfig) -> None:
-    """Run reward post-training with group-relative policy optimisation."""
+    """Run reward post-training with group-relative policy optimisation.
+
+    GRPO is driven explicitly rather than through ``Trainer.fit`` because its
+    step is a different shape: roll out a group of trajectories per prompt,
+    score them, compute a group-relative advantage, then take several inner
+    optimisation passes over the stored trajectory. There is no batch of clean
+    latents anywhere in that loop, which is why it cannot reuse the supervised
+    objective interface.
+    """
+    import torch
+
     from avgen.checkpoint import load as load_checkpoint
     from avgen.cli._wiring import build_training_stack
-    from avgen.rl.grpo import GRPOConfig, GRPOTrainer
-
-    stack = build_training_stack(config)
-    reward = build_rewards(config)
+    from avgen.infer.schedule import ScheduleConfig, build_sigma_schedule
+    from avgen.rl.grpo import GRPOConfig, GRPOTrainer, WindowSchedule
+    from avgen.rl.rollout import model_velocity_fn
 
     settings = config.rl
+    prompts = _load_prompts(settings.prompts_file)
+    reward = build_rewards(config)
+    stack = build_training_stack(config)
+
     grpo = GRPOConfig(
         group_size=settings.group_size,
-        sampler_steps=settings.sampler_steps,
-        kl_coefficient=settings.kl_coefficient,
         clip_range=settings.clip_range,
-        normalize_advantage=settings.advantage_normalize,
-        mixgrpo_window=settings.mixgrpo_window,
-        sde_noise_scale=settings.sde_noise_scale,
+        kl_coefficient=settings.kl_coefficient,
+        normalize_advantage_by_std=settings.advantage_normalize,
+        noise_level=settings.sde_noise_scale,
+        # MixGRPO: only a sliding window of denoising steps takes the SDE path
+        # and receives gradient; the rest stay on the deterministic ODE. Zero
+        # means optimise every step — correct, and proportionally expensive.
+        window=(
+            WindowSchedule(
+                window=settings.mixgrpo_window, total_steps=settings.sampler_steps
+            )
+            if settings.mixgrpo_window
+            else None
+        ),
     )
+
+    bucket = config.data.buckets[0]
+    patchifier = stack.objective.patchifier
+    device = stack.env.device
+    batch = next(iter(stack.source)).to(device)
+
+    velocity = model_velocity_fn(
+        stack.parallel.model,
+        patchifier=patchifier,
+        positions=batch.video_positions,
+        mask=batch.video_mask,
+        text_features=batch.text,
+        text_mask=batch.text_mask,
+    )
+    sigmas = build_sigma_schedule(
+        ScheduleConfig(name="linear", steps=settings.sampler_steps), device=device
+    ).sigmas
+    latent_shape = (
+        config.data.latent_channels,
+        bucket.frames,
+        bucket.height,
+        bucket.width,
+    )
+
+    if config.checkpoint.resume:
+        load_checkpoint(config.checkpoint.resume, stack.state, parallel=stack.parallel)
+
     _LOG.info(
-        "grpo group_size=%d steps=%d kl=%g rewards=%s",
+        "grpo prompts=%d group_size=%d sampler_steps=%d kl=%g rewards=%s",
+        len(prompts),
         settings.group_size,
         settings.sampler_steps,
         settings.kl_coefficient,
         ", ".join(settings.rewards),
     )
 
-    if config.checkpoint.resume:
-        load_checkpoint(config.checkpoint.resume, stack.state, parallel=stack.parallel)
-
-    trainer = GRPOTrainer(
-        stack.state,
-        stack.parallel,
-        grpo,
-        reward=reward,
-        reference_checkpoint=settings.reference_checkpoint or None,
-        logger=stack.logger,
-    )
+    trainer = GRPOTrainer(stack.state, velocity, grpo)
+    per_step = max(1, config.train.global_batch_size)
     try:
-        trainer.fit(stack.source, total_steps=config.train.steps)
+        for step in range(config.train.steps):
+            # Cycle the prompt set; a group is drawn per prompt every step.
+            offset = (step * per_step) % len(prompts)
+            selected = [prompts[(offset + i) % len(prompts)] for i in range(per_step)]
+            buffer = trainer.rollout(
+                selected,
+                sigmas=sigmas,
+                latent_shape=latent_shape,
+                reward=reward,
+                device=device,
+                dtype=torch.float32,
+            )
+            metrics = trainer.update(buffer)
+            if metrics and step % config.telemetry.log_every == 0:
+                last = metrics[-1]
+                record = {
+                    "rl/loss": float(last.loss),
+                    "rl/kl": float(last.kl),
+                    "rl/clip_fraction": float(last.clip_fraction),
+                    "rl/advantage_std": float(last.advantage_std),
+                }
+                if buffer.rewards is not None:
+                    record["rl/reward"] = float(buffer.rewards.mean())
+                stack.logger.log_metrics(record, step)
     finally:
         close = getattr(stack.logger, "close", None)
         if callable(close):
@@ -185,6 +280,4 @@ def rl_from_config(config: RunConfig) -> None:
     if algorithm == "grpo":
         _run_grpo(config)
         return
-    raise ValueError(
-        f"unknown rl.algorithm {algorithm!r}; expected one of: grpo, dpo"
-    )
+    raise ValueError(f"unknown rl.algorithm {algorithm!r}; expected one of: grpo, dpo")

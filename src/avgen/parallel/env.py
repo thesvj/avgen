@@ -220,7 +220,7 @@ def init_distributed(
                 # Pins the default device for this process group so barriers and
                 # object collectives do not warn or guess.
                 kwargs["device_id"] = device
-            dist.init_process_group(**kwargs)  # type: ignore[arg-type]
+            dist.init_process_group(**kwargs)
         finally:
             if previous is None:
                 os.environ.pop("TORCH_NCCL_BLOCKING_WAIT", None)

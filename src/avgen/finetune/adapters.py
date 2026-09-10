@@ -228,7 +228,7 @@ class ControlAdapterConfig:
             )
 
 
-class ControlAdapter(nn.Module):  # type: ignore[misc]
+class ControlAdapter(nn.Module):
     """A ControlNet-style trainable side tower over a frozen base model.
 
     The tower is a deep copy of the base model's first ``num_blocks`` blocks.
@@ -470,7 +470,7 @@ class IPAdapterConfig:
             raise ValueError(f"scale must be non-negative; got {self.scale!r}")
 
 
-class IPAdapter(nn.Module):  # type: ignore[misc]
+class IPAdapter(nn.Module):
     """Decoupled image-prompt cross-attention over a frozen base.
 
     For each targeted block, the image prompt gets its own ``k`` and ``v``

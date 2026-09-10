@@ -29,6 +29,7 @@ each of its tokens came from.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from typing import cast
 
 import torch
 from torch.utils import _pytree
@@ -211,7 +212,7 @@ class TokenStream:
     @property
     def batch_size(self) -> int:
         """Number of samples."""
-        return self.tokens.shape[0]
+        return cast("int", self.tokens.shape[0])
 
     @property
     def length(self) -> int:
@@ -221,12 +222,12 @@ class TokenStream:
         global sequence length. Code that needs the global length must read it
         from ``layout.num_tokens``.
         """
-        return self.tokens.shape[1]
+        return cast("int", self.tokens.shape[1])
 
     @property
     def width(self) -> int:
         """Token feature width."""
-        return self.tokens.shape[2]
+        return cast("int", self.tokens.shape[2])
 
     @property
     def device(self) -> torch.device:
@@ -241,7 +242,7 @@ class TokenStream:
     @property
     def per_token_noise(self) -> bool:
         """Whether the noise level varies within a sample."""
-        return self.noise_level.ndim == 2
+        return cast("bool", self.noise_level.ndim == 2)
 
     def expanded_noise(self) -> torch.Tensor:
         """Return the noise level broadcast to ``(batch, length)``.
@@ -378,7 +379,7 @@ class TextContext:
     @property
     def is_empty(self) -> bool:
         """Whether there is no usable text conditioning."""
-        return self.features.shape[1] == 0
+        return cast("bool", self.features.shape[1] == 0)
 
     def validate(self) -> None:
         """Validate rank, shape, dtype, and device.

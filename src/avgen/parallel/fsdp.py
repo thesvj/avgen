@@ -124,14 +124,14 @@ def apply_fsdp(
         reshard = settings.reshard_after_forward
         if index == last and not settings.shard_last_block_after_forward:
             reshard = False
-        fully_shard(block, reshard_after_forward=reshard, **shared)  # type: ignore[arg-type]
+        fully_shard(block, reshard_after_forward=reshard, **shared)
 
     # The root gathers whatever is left: embeddings, projections, norms. It must
     # be wrapped last so FSDP2 sees the already-sharded blocks as leaves.
     fully_shard(
         model,
         reshard_after_forward=settings.reshard_after_forward,
-        **shared,  # type: ignore[arg-type]
+        **shared,
     )
     return model
 
@@ -166,9 +166,9 @@ def set_prefetch_depth(
         ahead = modules[index + 1 : index + 1 + forward]
         behind = modules[max(0, index - backward) : index][::-1]
         if ahead:
-            module.set_modules_to_forward_prefetch(ahead)  # type: ignore[attr-defined]
+            module.set_modules_to_forward_prefetch(ahead)
         if behind and hasattr(module, "set_modules_to_backward_prefetch"):
-            module.set_modules_to_backward_prefetch(behind)  # type: ignore[attr-defined]
+            module.set_modules_to_backward_prefetch(behind)
 
 
 def summarize_sharding(model: nn.Module) -> dict[str, int]:

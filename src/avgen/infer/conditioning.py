@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, replace
+from typing import cast
 
 import torch
 
@@ -147,7 +148,7 @@ class StreamState:
     @property
     def is_audio(self) -> bool:
         """Whether this is the rank-3 audio layout."""
-        return self.latents.ndim == 3
+        return cast("bool", self.latents.ndim == 3)
 
     @property
     def batch_size(self) -> int:

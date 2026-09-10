@@ -23,6 +23,7 @@ concluding that a frozen video is a good one.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -264,15 +265,14 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
     moment the prompt count is not divisible by the data world size, which is
     almost always.
     """
-    import functools
-
     from avgen.cli._wiring import build_generation_pipeline
     from avgen.eval import EvalBatch, EvalPin, run_eval_suite, shard_prompts
 
     settings = configuration.eval
     prompts = _load_prompts(settings)
 
-    data_rank, data_world, gather = 0, 1, None
+    gather: Callable[[Any], list[Any]] | None = None
+    data_rank, data_world = 0, 1
     try:
         from avgen.parallel.env import init_distributed, is_distributed_launch
 
@@ -284,7 +284,16 @@ def _generate_and_measure(configuration: Any, arguments: argparse.Namespace) -> 
             dims = build_parallel_dims(configuration, world_size=env.world_size)
             mesh = dims.build_mesh(env.device.type)
             data_rank, data_world = dims.data_coordinates(mesh)
-            gather = functools.partial(gather_object)
+
+            def gather(payload: Any) -> list[Any]:
+                # gather_object returns None on every rank that is not the
+                # destination, and the suite iterates whatever it gets back —
+                # so handing it the raw function raises TypeError on ranks
+                # 1..N-1. Only rank 0 writes the report, so an empty list is
+                # both correct and the cheapest thing to merge.
+                collected = gather_object(payload)
+                return collected if collected is not None else []
+
     except Exception:
         data_rank, data_world, gather = 0, 1, None
 

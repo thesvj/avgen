@@ -44,7 +44,7 @@ import math
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -852,7 +852,7 @@ class GenerationPipeline:
         what lets every solver stay a pure function of full-length tensors.
         """
         if self.cp_mesh is None:
-            return self.model(inputs)
+            return cast("ModelOutput", self.model(inputs))
 
         from avgen.parallel.context import gather_tokens, shard_stream
 
@@ -939,7 +939,7 @@ def _model_patchifier(model: Any) -> Patchifier:
     """
     candidate = getattr(model, "patchifier", None)
     if candidate is not None:
-        return candidate  # type: ignore[no-any-return]
+        return candidate
     return GridPatchifier()
 
 

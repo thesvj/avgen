@@ -48,9 +48,7 @@ def _in_torchrun() -> bool:
 
 
 _HAS_TWO_GPUS = (
-    torch.cuda.is_available()
-    and _in_torchrun()
-    and torch.cuda.device_count() >= 2
+    torch.cuda.is_available() and _in_torchrun() and torch.cuda.device_count() >= 2
 )
 MULTI = pytest.mark.skipif(
     not _HAS_TWO_GPUS, reason="needs >=2 CUDA devices under torchrun"
@@ -372,18 +370,21 @@ class TestRealProcessGroup:
 
         # Same seed on every rank so both paths denoise the same sample.
         unsharded = objective(
-            model, batch, RNGStreams.from_seed(0, device=env.device),
+            model,
+            batch,
+            RNGStreams.from_seed(0, device=env.device),
             patchifier=patchifier,
         )
         cp_dims = ParallelDims(world_size=env.world_size, context=env.world_size)
         cp_mesh = cp_dims.build_mesh()["cp"]
         sharded = objective(
-            model, batch, RNGStreams.from_seed(0, device=env.device),
-            patchifier=patchifier, cp_mesh=cp_mesh,
+            model,
+            batch,
+            RNGStreams.from_seed(0, device=env.device),
+            patchifier=patchifier,
+            cp_mesh=cp_mesh,
         )
-        assert torch.allclose(
-            unsharded.loss, sharded.loss, rtol=1e-3, atol=1e-4
-        ), (
+        assert torch.allclose(unsharded.loss, sharded.loss, rtol=1e-3, atol=1e-4), (
             f"context-parallel loss {float(sharded.loss):.6f} != unsharded "
             f"{float(unsharded.loss):.6f} — ring attention is not exact here"
         )

@@ -57,6 +57,9 @@ rl:
   # Never leave this empty: with no reward every sample in a group scores
   # identically, the group-relative advantage is identically zero, and the run
   # is an expensive no-op that looks like it is working.
+  # GRPO generates from prompts; there are no clean latents to read, so the
+  # data source supplies nothing here and this file is required.
+  prompts_file: ""           # REQUIRED: newline-delimited prompts to roll out
   rewards: [temporal_consistency, motion_magnitude]
   reward_weights: [1.0, 0.5]   # must match `rewards` one-for-one, or be empty
 

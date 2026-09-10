@@ -446,7 +446,7 @@ class WandbLogger(RankGatedLogger):
         try:
             # wandb is not a declared extra, so it has no stub in the mypy
             # override list; the lazy import is guarded either way.
-            import wandb  # type: ignore[import-not-found]
+            import wandb
         except ImportError as error:
             raise RuntimeError(
                 "wandb logging requires wandb; install it with 'pip install wandb'"

@@ -153,7 +153,9 @@ def _selective_op_context(config: ActivationCheckpointConfig) -> Callable[..., A
         return policy
 
     def context_fn() -> tuple[Any, Any]:
-        return create_selective_checkpoint_contexts(policy_factory())
+        return cast(
+            "tuple[Any, Any]", create_selective_checkpoint_contexts(policy_factory())
+        )
 
     return context_fn
 

@@ -770,8 +770,8 @@ def _upload_future(result: Any) -> Future[Any]:
     """
     upload = getattr(result, "upload_completion", None)
     if upload is not None:
-        return upload  # type: ignore[no-any-return]
-    return result  # type: ignore[no-any-return]
+        return upload
+    return result
 
 
 def save(

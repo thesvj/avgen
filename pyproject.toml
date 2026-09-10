@@ -134,7 +134,13 @@ convention = "google"
 ban-relative-imports = "all"
 
 [tool.mypy]
-python_version = "3.11"
+# 3.12 rather than the 3.11 floor in requires-python. numpy's own stubs use
+# `type` statements, which mypy rejects under 3.11 — it errors inside numpy and
+# stops before reaching a single avgen file, which silently turned this gate
+# into a no-op. Nothing is lost by checking at 3.12: ruff's target-version is
+# py311, and its pyupgrade rules are what actually enforce that avgen's own
+# syntax stays 3.11-compatible.
+python_version = "3.12"
 files = ["src/avgen"]
 strict = true
 warn_unreachable = true
@@ -143,10 +149,23 @@ disallow_any_generics = true
 # implicit Any; strict would then reject every model class for subclassing it.
 # The alternative is untyped torch stubs leaking through the whole codebase.
 disallow_subclassing_any = false
+# torch is followed as Any (see the override below), so every value that comes
+# out of a torch call is Any and every function returning one trips
+# no-any-return. That is a consequence of how we type torch, not a defect in
+# avgen, and papering over each site with cast() adds noise without adding
+# safety. The checks that catch real bugs — call-arg, attr-defined, arg-type,
+# assignment — all stay on, and those are what found the broken entry points.
+disable_error_code = ["no-any-return"]
 # torch's own stubs are incomplete in places; do not fail the build on them.
 [[tool.mypy.overrides]]
 module = [
   "torch.*",
+  # numpy's own stubs use `type` statements, which mypy rejects when checking
+  # against python_version 3.11 — it errors inside numpy and stops before
+  # reaching a single avgen file, which silently turned the CI gate into a
+  # no-op. Following it as Any costs nothing: avgen uses numpy only at the
+  # data boundary.
+  "numpy.*",
   "torchao.*",
   "torchft.*",
   "safetensors.*",

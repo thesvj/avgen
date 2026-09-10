@@ -1121,6 +1121,10 @@ class RLConfig:
             a window trades a little bias for a large speedup.
         sde_noise_scale: Noise injected when converting the deterministic ODE
             sampler into an SDE. Exploration is impossible without it.
+        prompts_file: Newline-delimited prompts to roll out. Required by GRPO,
+            which generates from prompts rather than reading clean latents, so
+            there is nothing for the data source to supply. Ignored by DPO,
+            which consumes preference pairs from the data source instead.
         dpo_beta: Temperature of the DPO loss. Larger keeps the policy closer
             to the reference.
         rewards: Reward model names.
@@ -1140,6 +1144,7 @@ class RLConfig:
     advantage_normalize: bool = True
     mixgrpo_window: int = 0
     sde_noise_scale: float = 0.7
+    prompts_file: str = ""
     dpo_beta: float = 0.1
     rewards: tuple[str, ...] = ()
     reward_weights: tuple[float, ...] = ()

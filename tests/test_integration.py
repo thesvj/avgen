@@ -249,9 +249,7 @@ class TestConditioningTasks:
                 build_timestep_sampler("uniform"),
                 MultiTaskConditioning(mode_weights=((mode, 1.0),)),
             )
-            output = objective(
-                state.model, batch, state.rng, patchifier=patchifier
-            )
+            output = objective(state.model, batch, state.rng, patchifier=patchifier)
             loss = float(output.loss)
             assert loss == loss, f"{mode.name} produced a non-finite loss"
             assert loss > 0.0

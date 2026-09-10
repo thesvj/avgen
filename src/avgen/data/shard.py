@@ -680,13 +680,16 @@ class ShardReader:
         # module imports on a machine where only the manifest is being read.
         from safetensors import safe_open
 
-        self._container = safe_open(
+        # Annotated Optional because close() releases the mapping and sets it
+        # back to None; a tensor handed out earlier aliases the mapping and must
+        # not be touched after that point.
+        self._container: Any | None = safe_open(
             str(self._path / DATA_FILENAME), framework="pt", device="cpu"
         )
         # The Python binding exposes the mapping through the context-manager
         # protocol; entering it explicitly lets the reader own the lifetime
         # rather than forcing every caller into a ``with`` block.
-        self._handle = self._container.__enter__()
+        self._handle = self._container.__enter__()  # type: ignore[no-untyped-call]
 
     @property
     def path(self) -> Path:

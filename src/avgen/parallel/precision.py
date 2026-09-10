@@ -34,7 +34,7 @@ matters least.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, cast
 
 import torch
 from torch import nn
@@ -210,7 +210,7 @@ def _eligible(name: str, module: nn.Module, config: PrecisionConfig) -> bool:
     # float8 matmul kernels require both inner dimensions to be a multiple of
     # 16. A layer that is not gets silently padded or falls back, so exclude it
     # rather than pay for a conversion that buys nothing.
-    return module.in_features % 16 == 0 and module.out_features % 16 == 0
+    return cast("bool", module.in_features % 16 == 0 and module.out_features % 16 == 0)
 
 
 def convert_to_float8(model: nn.Module, config: PrecisionConfig) -> int:

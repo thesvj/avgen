@@ -48,7 +48,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 import torch
 
@@ -235,7 +235,9 @@ class GuidanceConfig:
             # Half a cosine from 1 to 0 across the trajectory: flat at both ends,
             # steepest in the middle, so neither endpoint changes abruptly.
             return self.min_scale + span * 0.5 * (1.0 + math.cos(math.pi * progress))
-        return self.min_scale + span * (1.0 - progress) ** self.schedule_power
+        return cast(
+            "float", self.min_scale + span * (1.0 - progress) ** self.schedule_power
+        )
 
     def modality_scale(self, modality: str, progress: float = 0.0) -> float:
         """Return the effective scale for one conditioning modality.

@@ -76,19 +76,35 @@ def build_adapter_hook(config: RunConfig) -> Any:
 
     if mode == "control":
         from avgen.finetune.adapters import ControlAdapter, ControlAdapterConfig
-        from avgen.finetune.freeze import freeze_all
-
-        control = ControlAdapterConfig(
-            control_channels=settings.control_channels,
-            num_blocks=settings.control_blocks,
-            scale=settings.control_scale,
-        )
+        from avgen.finetune.freeze import freeze_all, freeze_except
 
         def _apply_control(model: nn.Module) -> nn.Module:
+            # `control_blocks: -1` means "half the depth", the usual ControlNet
+            # arrangement, and can only be resolved once the model exists.
+            depth = len(getattr(model, "blocks", ()))
+            blocks = settings.control_blocks
+            if blocks < 0:
+                blocks = max(1, depth // 2)
+            elif blocks > depth:
+                raise ValueError(
+                    f"finetune.control_blocks={settings.control_blocks} exceeds the "
+                    f"model's depth of {depth}"
+                )
+
+            control = ControlAdapterConfig(
+                control_width=settings.control_channels,
+                num_blocks=blocks,
+                conditioning_scale=settings.control_scale,
+            )
             # The base tower is frozen and the side tower is zero-initialised, so
             # the adapted model is an exact identity at step zero. Anything else
             # would perturb a base model that is presumed good.
-            freeze_all(model)
+            if settings.train_norms:
+                # Norm gains are a few thousand parameters and usually worth a
+                # visible quality gain, so they are cheap to leave trainable.
+                freeze_except(model, ("norm",))
+            else:
+                freeze_all(model)
             return ControlAdapter(model, control)
 
         return _apply_control

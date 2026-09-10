@@ -443,7 +443,7 @@ def _sum_of_squares(weight: torch.Tensor) -> torch.Tensor:
     return squares
 
 
-class LoRALinear(nn.Linear):  # type: ignore[misc]
+class LoRALinear(nn.Linear):
     """An ``nn.Linear`` carrying a low-rank (optionally DoRA) adapter.
 
     Subclassing rather than wrapping is the load-bearing design decision. A

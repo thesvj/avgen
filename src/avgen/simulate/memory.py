@@ -152,10 +152,15 @@ class MemoryEstimate:
 def _activation_bytes_per_block(
     shape: ModelShape,
     *,
-    local_sequence: int,
+    local_sequence: float,
     dtype_bytes: int,
 ) -> float:
     """Stored activation bytes for one unchecked transformer block.
+
+    ``local_sequence`` is deliberately a float: it is the global length divided
+    by the sequence-shard factor, and rounding it to an int before multiplying
+    through would bias every estimate downward by up to one token per rank —
+    small per rank, and not small once multiplied by depth and world size.
 
     Counts the tensors a backward pass needs: the block input, the normalised
     activations, the q/k/v projections, the attention output, and the two

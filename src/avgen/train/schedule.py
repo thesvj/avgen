@@ -38,7 +38,7 @@ from __future__ import annotations
 
 import math
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LambdaLR
@@ -131,7 +131,7 @@ def build_schedule(
             "a run that is entirely warmup never trains at its configured rate"
         )
     lambda_fn = _SCHEDULES[name](total_steps, warmup_steps, options)
-    return LambdaLR(optimizer, lr_lambda=lambda_fn)
+    return cast("LRSchedule", LambdaLR(optimizer, lr_lambda=lambda_fn))
 
 
 def _warmup_factor(step: int, warmup_steps: int) -> float:

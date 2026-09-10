@@ -92,7 +92,7 @@ class CLIPScore(RunningMetric):
         """
         return f"clip:{self.model_id}:stride{self._stride}"
 
-    @torch.no_grad()
+    @torch.no_grad()  # type: ignore[untyped-decorator]
     def observe(self, **inputs: Any) -> Mapping[str, tuple[torch.Tensor, int]]:
         """Accumulate mean and minimum per-frame prompt agreement.
 
