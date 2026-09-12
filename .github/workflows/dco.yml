@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The whole PR range, not just the tip: an unsigned commit in the
           # middle of a branch is exactly the case a shallow clone misses.
