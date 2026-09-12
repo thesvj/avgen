@@ -1,0 +1,19 @@
+# 300M video DiT — the smallest size at which quality trends are informative.
+#
+# Use this to make architecture and objective decisions cheaply: at this size a
+# run is hours rather than weeks, and most objective-level conclusions (timestep
+# distribution, loss weighting, conditioning dropout) transfer upward. Scaling
+# conclusions do not; verify those at 2B before committing.
+model:
+  name: video_dit
+  depth: 20
+  width: 768
+  num_heads: 6          # 128 dims per head — the size flash-attention kernels
+                        # are tuned for, and worth holding fixed across scales
+  mlp_ratio: 4
+  patch_frames: 1       # patch only in space; temporal patching is the VAE's job
+  patch_height: 2
+  patch_width: 2
+  in_channels: 16
+  cross_attention: true
+  rope_theta: 10000.0

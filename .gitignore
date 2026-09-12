@@ -1,0 +1,129 @@
+# ---------------------------------------------------------------- Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+/build/
+develop-eggs/
+/dist/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ------------------------------------------------------- Environments / uv
+.venv/
+venv/
+env/
+ENV/
+.python-version
+# uv.lock IS committed: a distributed bug report is not actionable without it.
+
+# ------------------------------------------------------------- Test / type
+.pytest_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+
+# ------------------------------------------------------------------- Docs
+/site/
+docs/reference/
+
+# --------------------------------------------------------- PyTorch / training
+# Run outputs. Never commit these; they are large and machine-specific.
+/runs/
+/outputs/
+/checkpoints/
+/logs/
+/wandb/
+/lightning_logs/
+/tensorboard/
+/profiler_traces/
+core.*
+
+# Weights and artifacts.
+*.safetensors
+*.pt
+*.pth
+*.ckpt
+*.bin
+*.onnx
+*.engine
+*.gguf
+
+# Distributed Checkpoint shards.
+*.distcp
+.metadata
+
+# Datasets and media that landed in the tree by accident.
+/data/
+*.mp4
+*.webm
+*.mkv
+*.wav
+*.flac
+*.npz
+*.arrow
+*.parquet
+
+# Traces from the simulator and the profiler.
+*.et.json
+*.et
+chakra_*.json
+kineto_*.json
+
+# torch.compile / inductor / triton caches.
+.torchinductor_cache/
+.triton/
+torch_compile_debug/
+
+# NCCL flight recorder dumps.
+nccl_trace_rank_*
+
+# ----------------------------------------------------------------- Editors
+.idea/
+.vscode/
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.\#*
+\#*\#
+.dir-locals.el
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------- OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ------------------------------------------------------------------ Misc
+*.log
+.env
+.env.local
+.direnv/
+node_modules/

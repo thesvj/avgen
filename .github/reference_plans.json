@@ -1,0 +1,107 @@
+{
+  "$comment": [
+    "Reference parallelism plans, checked in CI by .github/scripts/check_reference_plans.py.",
+    "",
+    "These are not benchmarks. They are a tripwire. A change to the parallel",
+    "layer, to a model's model_shape, or to the cost models can quietly make a",
+    "plan stop fitting in device memory, or halve its predicted throughput, and",
+    "nothing in a CPU unit test would notice. The whole point of the simulator",
+    "is that this class of regression is catchable in seconds instead of after",
+    "a 1024-GPU launch.",
+    "",
+    "The floors are deliberately loose. They are a regression guard, not a",
+    "target: tighten them when a real run calibrates the cost models, and treat",
+    "any tightening as a deliberate decision, not a drive-by edit.",
+    "",
+    "Refresh the observed values with:",
+    "  python .github/scripts/check_reference_plans.py --update"
+  ],
+  "defaults": {
+    "accelerator": "H100_SXM",
+    "gpus_per_node": 8,
+    "memory_headroom": 0.10,
+    "achieved_fraction": 0.45
+  },
+  "models": {
+    "dit_2b_720p": {
+      "description": "2.7B video DiT, 5s of 720p at 16fps: 20x45x80 = 72000 tokens",
+      "parameters": 2684354560,
+      "depth": 32,
+      "width": 2048,
+      "num_heads": 16,
+      "mlp_ratio": 4,
+      "text_tokens": 256,
+      "sequence_length": 72000,
+      "micro_batch_size": 1
+    },
+    "dit_2b_480p": {
+      "description": "same model, 5s of 480p at 16fps: 20x30x54 = 32400 tokens",
+      "parameters": 2684354560,
+      "depth": 32,
+      "width": 2048,
+      "num_heads": 16,
+      "mlp_ratio": 4,
+      "text_tokens": 256,
+      "sequence_length": 32400,
+      "micro_batch_size": 1
+    }
+  },
+  "plans": [
+    {
+      "name": "single-node-480p",
+      "model": "dit_2b_480p",
+      "world_size": 8,
+      "max_tensor": 1,
+      "max_context": 8,
+      "max_pipeline": 1,
+      "pinned": { "dp_shard": 2, "context": 4 },
+      "floors": {
+        "min_mfu": 0.10,
+        "min_scaling_efficiency": 0.50,
+        "max_memory_gib": 72.0
+      }
+    },
+    {
+      "name": "eight-node-720p",
+      "model": "dit_2b_720p",
+      "world_size": 64,
+      "max_tensor": 8,
+      "max_context": 16,
+      "max_pipeline": 1,
+      "pinned": { "dp_shard": 8, "context": 8 },
+      "floors": {
+        "min_mfu": 0.10,
+        "min_scaling_efficiency": 0.50,
+        "max_memory_gib": 72.0
+      }
+    },
+    {
+      "name": "sixty-four-node-720p",
+      "model": "dit_2b_720p",
+      "world_size": 512,
+      "max_tensor": 8,
+      "max_context": 16,
+      "max_pipeline": 1,
+      "pinned": { "dp_shard": 64, "context": 8 },
+      "floors": {
+        "min_mfu": 0.10,
+        "min_scaling_efficiency": 0.45,
+        "max_memory_gib": 72.0
+      }
+    },
+    {
+      "name": "thousand-gpu-720p",
+      "model": "dit_2b_720p",
+      "world_size": 1024,
+      "max_tensor": 8,
+      "max_context": 16,
+      "max_pipeline": 1,
+      "pinned": { "dp_shard": 128, "context": 8 },
+      "floors": {
+        "min_mfu": 0.10,
+        "min_scaling_efficiency": 0.40,
+        "max_memory_gib": 72.0
+      }
+    }
+  ]
+}

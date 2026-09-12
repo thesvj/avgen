@@ -1,0 +1,59 @@
+# Full fine-tuning — every parameter trainable (or a named subset frozen).
+#
+# Use this when the target domain is far enough from pretraining that an adapter
+# cannot cover it. It costs the same memory as pretraining, so the parallelism
+# section is the pretraining one, not the LoRA one.
+#
+# The two settings that separate a good full fine-tune from a bad one:
+#
+#   lr            Roughly 10x LOWER than pretraining. The model is already at a
+#                 good point and a pretraining LR walks it away from one — the
+#                 characteristic symptom is samples that get worse for several
+#                 thousand steps before getting better, if they ever do.
+#
+#   warmup_steps  Still needed, and still short. Skipping warmup entirely on a
+#                 loaded checkpoint puts a full-size update on step 1, against
+#                 optimizer moments that are all zero.
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-full-ft
+output_dir: runs/dit2b-full-ft
+
+finetune:
+  mode: full
+  base_checkpoint: ""     # REQUIRED
+  freeze_patterns: []     # e.g. [text_proj, patch_embed] to hold the input
+                          # stack fixed while the blocks adapt
+
+train:
+  steps: 20000
+  global_batch_size: 32
+  micro_batch_size: 2
+  lr: 1.0e-5              # ~10x lower than pretraining
+  weight_decay: 0.01
+  beta2: 0.95
+  schedule: cosine
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  ema_decay: 0.9999       # worth keeping here: a full fine-tune is long enough
+                          # for the average to be meaningfully better
+  log_every: 20
+
+parallel:
+  dp_shard: -1
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+  compile_blocks: true
+
+checkpoint:
+  save_every: 2000
+  keep_last_n: 3
+  load_model_only: true   # start from the base's WEIGHTS only. Restoring its
+                          # optimizer state, LR schedule position, and data
+                          # cursor would resume the pretraining run, not start
+                          # a fine-tune.

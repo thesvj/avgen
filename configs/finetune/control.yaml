@@ -1,0 +1,63 @@
+# Control fine-tuning — a ControlNet-style side tower for spatial conditioning.
+#
+# A trainable copy of the first half of the blocks consumes a control signal
+# (depth, pose, edges, a reference video) and injects residuals into the frozen
+# base. The base never changes, so the original model's behaviour is preserved
+# exactly when the control scale is zero — which is what makes the adapter
+# safe to ship alongside the base rather than instead of it.
+#
+# Three settings decide whether this works:
+#
+#   control_blocks   How much of the base the side tower copies. -1 means half
+#                    the depth, the usual ControlNet arrangement. More gives
+#                    finer control and costs proportionally more memory.
+#
+#   control_scale    Multiplier on the injected residuals. 1.0 during training.
+#                    At inference it is the strength knob, and 0.0 recovers the
+#                    base model exactly.
+#
+#   lr               Between the LoRA and full-fine-tune values: the tower is a
+#                    fresh copy of trained weights, so it needs more than an
+#                    adapter and less than a from-scratch module.
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-control
+output_dir: runs/dit2b-control
+
+finetune:
+  mode: control
+  base_checkpoint: ""     # REQUIRED
+  control_channels: 3     # e.g. 3 for an RGB or depth-as-RGB control signal
+  control_blocks: -1      # -1 copies half the depth
+  control_scale: 1.0
+  train_norms: false      # the base's norms stay frozen; only the side tower
+                          # trains, which is what preserves base behaviour
+
+train:
+  steps: 30000
+  global_batch_size: 32
+  micro_batch_size: 2
+  lr: 5.0e-5
+  weight_decay: 0.0
+  schedule: cosine
+  warmup_steps: 500
+  max_grad_norm: 1.0
+  ema_decay: 0.0
+  log_every: 20
+
+parallel:
+  dp_shard: -1
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+  fsdp:
+    ignore_frozen_params: true
+
+checkpoint:
+  save_every: 2000
+  keep_last_n: 3
+  load_model_only: true

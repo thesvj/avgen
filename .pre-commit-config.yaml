@@ -1,0 +1,60 @@
+# Pre-commit is the fast gate: anything here must run in seconds on a diff.
+# The slow gates (full pytest, the simulator sweep) live in CI.
+#
+#   make dev          installs these hooks
+#   pre-commit run --all-files
+default_language_version:
+  python: python3.11
+
+# Generated API reference pages and vendored fixtures are not ours to reformat.
+exclude: |
+  (?x)^(
+      docs/reference/.*
+    | .*\.ipynb
+  )$
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        # Checkpoints, latents, and sample clips do not belong in git. 1 MiB is
+        # generous for source; anything bigger is almost always an accident.
+        args: [--maxkb=1024]
+      - id: check-case-conflict
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-toml
+      - id: check-json
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: debug-statements
+      - id: check-executables-have-shebangs
+      - id: forbid-submodules
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.9.6
+    hooks:
+      # Lint first so an auto-fixable violation is fixed before formatting.
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      # mypy runs from the project environment rather than an isolated one:
+      # avgen is typed against torch's own stubs, and pinning a second torch
+      # inside pre-commit's virtualenv would be both slow and a lie.
+      # `files` scopes it to src/avgen; pyproject's [tool.mypy] does the rest.
+      - id: mypy
+        name: mypy --strict (src/avgen)
+        entry: uv run mypy
+        language: system
+        types: [python]
+        files: ^src/avgen/
+        pass_filenames: false
+        require_serial: true

@@ -1,0 +1,61 @@
+# One GPU — the size at which most research iteration actually happens.
+#
+# Parallelism: none. With a 300M model at 16k tokens nothing needs sharding, so
+# there is no mesh and no collectives, and the step time is pure compute. If
+# this OOMs, the fix is a smaller bucket or selective_op checkpointing, not a
+# parallelism axis you cannot use on one device.
+_base_:
+  - ../model/dit_300m.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit300m-1gpu
+output_dir: runs/dit300m-1gpu
+seed: 0
+
+train:
+  steps: 100000
+  global_batch_size: 8
+  micro_batch_size: -1      # take it from the active bucket
+  optimizer: adamw
+  lr: 1.0e-4
+  weight_decay: 0.01
+  beta1: 0.9
+  beta2: 0.95               # not 0.999: diffusion-transformer gradients are
+                            # heavier-tailed than language-model ones, and a
+                            # long second-moment memory makes the optimizer
+                            # slow to react to a bad batch
+  max_grad_norm: 1.0
+  schedule: cosine
+  warmup_steps: 1000
+  timestep_sampler: shifted_logit_normal
+  base_shift: 0.5
+  max_shift: 1.15
+  base_seq_len: 256
+  max_seq_len: 16384
+  ema_decay: 0.9999
+  log_every: 20
+  eval_every: 5000
+
+parallel:
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op      # stores matmul and attention outputs, recomputes
+                            # norms and elementwise work: most of the memory of
+                            # full checkpointing for a fraction of the compute
+    save_op_frequency: 1
+  compile_blocks: true      # one block compiles, the graph is reused `depth`
+                            # times; on a 100k-step run this pays back in
+                            # minutes, not hours
+
+checkpoint:
+  save_every: 5000
+  keep_last_n: 3
+  keep_every_n_steps: 25000         # a long run should leave a usable trajectory, not
+                            # only its tail
+  async_save: true
+
+telemetry:
+  loggers: [console, jsonl]
+  log_every: 20

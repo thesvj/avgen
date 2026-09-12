@@ -1,0 +1,212 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "avgen"
+version = "0.1.0"
+description = "A PyTorch-native framework for training video and audio-video generation models at scale"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+authors = [{ name = "The avgen authors" }]
+keywords = [
+  "pytorch",
+  "video-generation",
+  "diffusion-transformer",
+  "flow-matching",
+  "distributed-training",
+  "fsdp",
+  "tensor-parallel",
+  "context-parallel",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: GPU :: NVIDIA CUDA",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Typing :: Typed",
+]
+
+# The core package depends on torch and nothing else that is not stdlib.
+# Everything heavier is an opt-in extra so a cluster image stays small and the
+# steady-state training hot path never imports an optional dependency.
+dependencies = ["torch>=2.6", "numpy>=1.26", "pyyaml>=6.0", "safetensors>=0.4"]
+
+[project.optional-dependencies]
+# Frozen pretrained text towers (T5, Gemma, Qwen, ...). Offline conditioning.
+text = ["transformers>=4.44", "sentencepiece>=0.2", "accelerate>=0.34"]
+# Frozen pretrained video/audio VAEs and vocoders. Offline latent preparation.
+codecs = ["diffusers>=0.31", "accelerate>=0.34"]
+# Media decode and columnar dataset reading for the offline ingest pipeline.
+data = ["pyarrow>=15", "av>=12", "torchaudio>=2.6"]
+# Experiment tracking backends. All are optional; avgen ships a no-op logger.
+tracking = ["tensorboard>=2.16"]
+# fp8 / low-precision training via torchao.
+quant = ["torchao>=0.9"]
+# Fault-tolerant training (per-step recovery without a full job restart).
+fault-tolerance = ["torchft>=0.1"]
+# Learned reward models for reinforcement-learning finetuning. The dependency-free
+# reference rewards in avgen.rl.rewards need none of this; these are the gated
+# preference models that a real alignment run wants.
+rewards = ["transformers>=4.44"]
+# There is deliberately no `hps` extra. hpsv2 pins `pytest==7.2.0`, so declaring
+# it anywhere — even in an extra nothing else references — makes the universal
+# resolution `uv lock` performs unsatisfiable, and every developer environment
+# along with it. The HPSv2 reward is still registered and still nameable in a
+# config; it raises at construction with an install command. Install it into its
+# own environment:  pip install hpsv2
+all = ["avgen[text,codecs,data,tracking,quant,rewards]"]
+
+[project.scripts]
+avgen = "avgen.cli.main:main"
+
+[project.urls]
+Homepage = "https://github.com/thesvj/avgen"
+Documentation = "https://thesvj.github.io/avgen"
+Repository = "https://github.com/thesvj/avgen"
+Issues = "https://github.com/thesvj/avgen/issues"
+Changelog = "https://github.com/thesvj/avgen/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+  "pre-commit>=4.0",
+  "pytest>=8.3",
+  "pytest-cov>=6.0",
+  "pytest-xdist>=3.6",
+  "ruff>=0.9",
+  "mypy>=1.14",
+]
+docs = [
+  "mkdocs>=1.6",
+  "mkdocs-material>=9.5",
+  "mkdocstrings[python]>=0.27",
+  "mkdocs-gen-files>=0.5",
+  "mkdocs-literate-nav>=0.6",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/avgen"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/avgen", "configs", "tests", "README.md", "LICENSE", "NOTICE"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+  "E",   # pycodestyle errors
+  "W",   # pycodestyle warnings
+  "F",   # pyflakes
+  "I",   # isort
+  "B",   # flake8-bugbear
+  "C4",  # comprehensions
+  "UP",  # pyupgrade
+  "SIM", # simplify
+  "RUF", # ruff-specific
+  "D",   # pydocstyle
+  "ANN", # annotations
+  "TID", # tidy imports
+  "PTH", # use pathlib
+]
+ignore = [
+  "D107",   # __init__ docstring lives on the class
+  "D203",   # incompatible with D211
+  "D213",   # incompatible with D212
+  "ANN401", # explicit Any is sometimes the honest type
+  "B008",   # function call in default is used for dataclass factories
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104", "ANN"]
+"examples/**" = ["D100", "D103", "ANN"]
+"benchmarks/**" = ["D100", "D103", "ANN"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.mypy]
+# 3.12 rather than the 3.11 floor in requires-python. numpy's own stubs use
+# `type` statements, which mypy rejects under 3.11 — it errors inside numpy and
+# stops before reaching a single avgen file, which silently turned this gate
+# into a no-op. Nothing is lost by checking at 3.12: ruff's target-version is
+# py311, and its pyupgrade rules are what actually enforce that avgen's own
+# syntax stays 3.11-compatible.
+python_version = "3.12"
+files = ["src/avgen"]
+strict = true
+warn_unreachable = true
+disallow_any_generics = true
+# torch is followed as Any (see the override below), which makes nn.Module an
+# implicit Any; strict would then reject every model class for subclassing it.
+# The alternative is untyped torch stubs leaking through the whole codebase.
+disallow_subclassing_any = false
+# torch is followed as Any (see the override below), so every value that comes
+# out of a torch call is Any and every function returning one trips
+# no-any-return. That is a consequence of how we type torch, not a defect in
+# avgen, and papering over each site with cast() adds noise without adding
+# safety. The checks that catch real bugs — call-arg, attr-defined, arg-type,
+# assignment — all stay on, and those are what found the broken entry points.
+disable_error_code = ["no-any-return"]
+# torch's own stubs are incomplete in places; do not fail the build on them.
+[[tool.mypy.overrides]]
+module = [
+  "torch.*",
+  # numpy's own stubs use `type` statements, which mypy rejects when checking
+  # against python_version 3.11 — it errors inside numpy and stops before
+  # reaching a single avgen file, which silently turned the CI gate into a
+  # no-op. Following it as Any costs nothing: avgen uses numpy only at the
+  # data boundary.
+  "numpy.*",
+  "torchao.*",
+  "torchft.*",
+  "safetensors.*",
+  "yaml.*",
+  "wandb.*",
+  "tensorboard.*",
+  "torch.utils.tensorboard.*",
+  "diffusers.*",
+  "transformers.*",
+  "av.*",
+  "pyarrow.*",
+  "bitsandbytes.*",
+]
+ignore_missing_imports = true
+follow_imports = "skip"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+  "gpu: requires at least one CUDA device",
+  "multigpu: requires at least two CUDA devices",
+  "slow: excluded from the fast pre-commit subset",
+  "optional_deps: requires an optional extra to be installed",
+]
+filterwarnings = ["error::DeprecationWarning:avgen.*"]
+
+[tool.coverage.run]
+source = ["src/avgen"]
+branch = true
+
+[tool.coverage.report]
+exclude_also = [
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+  "@overload",
+  "\\.\\.\\.$",
+]

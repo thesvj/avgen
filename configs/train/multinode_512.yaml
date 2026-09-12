@@ -1,0 +1,109 @@
+# 64 nodes, 512 GPUs — a 2B model on 65k-token clips.
+#
+# Parallelism choice, and why:
+#
+#   context = 4, tensor = 8, dp_replicate = 8, dp_shard = 2.
+#
+# This is the plan `avgen plan --world-size 512` ranks first for this shape, and
+# the reasoning is worth stating because the ordering is not obvious:
+#
+#   context = 4   The sequence is 65k tokens. CP is the only axis that reduces
+#                 per-rank sequence length, and it is what both activation
+#                 memory and the quadratic attention term scale with. First
+#                 knob, always.
+#
+#   tensor = 8    Exactly one node's NVLink domain. TP communicates twice per
+#                 block on the critical path; crossing a node boundary with it
+#                 is catastrophic rather than merely slow, so tp is capped at
+#                 gpus_per_node and the mesh order puts it innermost to
+#                 guarantee that placement.
+#
+#   dp_shard = 2  With cp x tp = 32 already sharding the model, only a little
+#                 more parameter sharding is needed to fit. Sharding further
+#                 would buy memory that is not the constraint and pay for it in
+#                 all-gather traffic that is.
+#
+#   dp_replicate = 8   The remainder. HSDP replicates across the 8 groups and
+#                 shards within them, so the gradient all-reduce crosses nodes
+#                 once per step instead of the all-gather crossing them per
+#                 block. At this ratio it is the faster arrangement, which the
+#                 simulator's `hsdp.all_reduce` vs `fsdp.all_gather` bottleneck
+#                 label makes visible before launch.
+#
+# Verify the plan before booking the allocation:
+#   avgen simulate --config configs/train/multinode_512.yaml --world-size 512
+#
+# Launch (per node):
+#   torchrun --nnodes 64 --nproc-per-node 8 --rdzv-backend c10d \
+#       --rdzv-endpoint $MASTER_ADDR:29500 \
+#       -m avgen.cli.main train --config configs/train/multinode_512.yaml
+_base_:
+  - ../model/dit_2b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit2b-512gpu
+output_dir: runs/dit2b-512gpu
+seed: 0
+
+data:
+  buckets:
+    - name: long_720p
+      frames: 32
+      height: 64
+      width: 112          # ~16:9
+      micro_batch_size: 1
+      weight: 1.0
+  shuffle_buffer: 8192
+  num_workers: 8
+
+train:
+  steps: 400000
+  global_batch_size: 256  # dp_size 16 x micro 1 x accum 16
+  micro_batch_size: 1
+  lr: 8.0e-5
+  weight_decay: 0.01
+  beta2: 0.95
+  max_grad_norm: 1.0
+  schedule: wsd
+  decay_ratio: 0.1
+  warmup_steps: 3000
+  timestep_sampler: shifted_logit_normal
+  base_shift: 0.5
+  max_shift: 1.15
+  base_seq_len: 256
+  max_seq_len: 65536      # the shift is interpolated to here; a schedule
+                          # calibrated at 4k trains long clips badly
+  ema_decay: 0.9999
+  log_every: 50
+  eval_every: 10000
+
+parallel:
+  dp_replicate: 8
+  dp_shard: -1            # 512 / (8 x context 4 x tensor 8) = 2
+  context: 4
+  tensor: 8
+  pipeline: 1
+  gpus_per_node: 8
+  sequence_parallel: true # shards norm and residual regions along the sequence;
+                          # this is where TP's activation-memory win actually is
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+    save_op_frequency: 1
+  fsdp:
+    reshard_after_forward: true
+  compile_blocks: true
+
+checkpoint:
+  save_every: 2000
+  keep_last_n: 2
+  keep_every_n_steps: 20000
+  async_save: true
+
+telemetry:
+  loggers: [console, jsonl]
+  log_every: 50
+  memory_report_every: 1000
+  report_mfu: true

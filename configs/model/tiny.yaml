@@ -1,0 +1,16 @@
+# Tiny model — for tests, smoke runs, and reading the code with a debugger.
+#
+# Not a useful generator. Its purpose is that a full training step, a
+# checkpoint save/load round trip, and an evaluation all complete on a CPU in
+# seconds, so a change can be verified without a GPU or a dataset.
+model:
+  name: video_dit
+  depth: 4
+  width: 128
+  num_heads: 4          # 32 dims per head; small, but the shape is real
+  mlp_ratio: 4
+  patch_frames: 1
+  patch_height: 2
+  patch_width: 2
+  in_channels: 4        # a toy latent, not a real VAE's channel count
+  cross_attention: true

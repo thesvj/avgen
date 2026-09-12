@@ -1,0 +1,158 @@
+# ---------------------------------------------------------------------------
+# Why this workflow exists
+# ---------------------------------------------------------------------------
+#
+# Every other CI job here answers "does the code still work on one CPU". None
+# of them answers the question that actually decides whether avgen is usable:
+# **does the parallelism plan still fit and still perform at 1024 GPUs?**
+#
+# That question normally costs a cluster to ask. avgen answers it on a
+# free-tier runner, because PyTorch ships everything needed to build a real
+# 1024-rank DeviceMesh with no GPUs at all — FakeProcessGroup for collectives,
+# FakeTensorMode and the meta device for storage-free parameters — and avgen
+# adds closed-form memory, communication, and compute models on top.
+#
+# The regressions this catches are exactly the ones that reach a cluster
+# otherwise, because they are invisible at small scale:
+#
+#   * a model change that grows activation memory and pushes a reference plan
+#     over 80 GB at world size 512 but not at world size 8;
+#   * an FSDP wrapping change that turns per-block all-gathers into one giant
+#     one, quietly destroying overlap;
+#   * a mesh-ordering change that lands tensor-parallel ranks across two nodes,
+#     which produces no error and costs a large fraction of throughput;
+#   * a context-parallel change that doubles ring volume per block.
+#
+# A failure here does NOT mean "your change is wrong". It means "your change
+# moved a number that other people depend on, and the pull request has to say
+# so". The floors live in .github/reference_plans.json and are deliberately
+# loose; tightening them is a maintainer decision.
+#
+# Runtime is seconds. There is no reason not to run it on every pull request.
+# ---------------------------------------------------------------------------
+
+name: Simulate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  merge_group:
+  workflow_dispatch:
+    inputs:
+      world_sizes:
+        description: "Space-separated world sizes to check"
+        required: false
+        default: "8 64 512 1024"
+
+concurrency:
+  group: simulate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  UV_TORCH_BACKEND: cpu
+  FORCE_COLOR: "1"
+
+jobs:
+  reference-plans:
+    name: world size ${{ matrix.world-size }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # Never fail-fast. When a change breaks the plan at 1024 ranks but not at
+      # 64, that contrast is the single most useful piece of diagnostic
+      # information available, and fail-fast would throw it away.
+      fail-fast: false
+      matrix:
+        world-size: [8, 64, 512, 1024]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      # Core dependencies only. The simulator must never need an optional
+      # extra: if it did, nobody would run it locally before opening a PR.
+      - name: Install
+        run: uv sync --no-dev
+
+      - name: Check reference plans at world size ${{ matrix.world-size }}
+        run: >-
+          uv run python .github/scripts/check_reference_plans.py
+          --world-sizes ${{ matrix.world-size }}
+          --device-type cpu
+
+  full-sweep:
+    name: full sweep + plan table
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install
+        run: uv sync --no-dev
+
+      # Same checks as the matrix, in one job, so the step summary carries a
+      # single comparable table across all four scales. This is what a reviewer
+      # reads, and what the PR template asks the author to paste.
+      - name: Reference plans, all world sizes
+        run: >-
+          uv run python .github/scripts/check_reference_plans.py
+          --world-sizes ${{ github.event.inputs.world_sizes || '8 64 512 1024' }}
+          --device-type cpu
+          | tee plan-table.txt
+
+      - name: Upload plan table
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reference-plan-table
+          path: plan-table.txt
+          if-no-files-found: warn
+
+  simulator-tests:
+    name: simulator unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install
+        run: uv sync --group dev
+
+      # The plan checker trusts the cost models; these tests are what keep the
+      # cost models honest.
+      - name: pytest tests/simulate
+        run: |
+          if [ -d tests/simulate ]; then
+            uv run pytest tests/simulate -m "not gpu and not multigpu" -q
+          else
+            echo "tests/simulate is not present yet; nothing to run."
+          fi

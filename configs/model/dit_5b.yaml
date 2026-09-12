@@ -1,0 +1,18 @@
+# 5B video DiT.
+#
+# At this size FSDP sharding of optimizer state stops being optional: AdamW in
+# mixed precision costs 12 bytes per parameter (an fp32 master copy plus two
+# fp32 moments), so 60 GB of optimizer state exists before a single activation
+# does. See `avgen plan` for what that implies for your world size.
+model:
+  name: video_dit
+  depth: 40
+  width: 2176
+  num_heads: 17         # 128 dims per head
+  mlp_ratio: 4
+  patch_frames: 1
+  patch_height: 2
+  patch_width: 2
+  in_channels: 16
+  cross_attention: true
+  rope_theta: 10000.0
