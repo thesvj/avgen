@@ -30,6 +30,8 @@ from __future__ import annotations
 
 import importlib
 import math
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -900,16 +902,34 @@ class TestOptionalDependencies:
         with pytest.raises(RuntimeError, match=r"avgen\[text\]"):
             TransformersTextEncoder("google/t5-v1_1-xxl").model()
 
+    @pytest.mark.slow
     def test_importing_the_package_needs_nothing_but_torch(self) -> None:
-        # The steady-state training hot path must never touch an optional
-        # dependency, and the cheapest way to keep that true is that importing
-        # avgen.codecs does not import them either.
-        import sys
+        """Importing avgen.codecs must not import an optional dependency.
 
-        import avgen.codecs  # noqa: F401
+        The steady-state training hot path must never touch one, and the
+        cheapest way to keep that true is that the import does not either.
 
-        assert "diffusers" not in sys.modules
-        assert "transformers" not in sys.modules
+        Checked in a **fresh interpreter**, not against this process's
+        ``sys.modules``. In-process the assertion is a statement about whichever
+        tests happened to run first — any earlier test that legitimately imports
+        transformers makes it fail — so it would pass or fail on test order and
+        xdist sharding rather than on the property it names.
+        """
+        probe = (
+            "import sys; import avgen.codecs; "
+            "leaked = [n for n in ('diffusers', 'transformers') if n in sys.modules]; "
+            "print(','.join(leaked))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert result.returncode == 0, result.stderr[-1500:]
+        assert result.stdout.strip() == "", (
+            f"importing avgen.codecs pulled in {result.stdout.strip()}"
+        )
 
     @pytest.mark.parametrize("model_id", ["", " x", "x "])
     def test_an_untrimmed_model_id_is_rejected_at_construction(

@@ -281,6 +281,7 @@ def build_sampler(config: SamplerConfig | str) -> Sampler:
     Raises:
         KeyError: If the name is not registered.
     """
+    _load_plugins()
     resolved = SamplerConfig(name=config) if isinstance(config, str) else config
     factory = _SAMPLERS.get(resolved.name)
     if factory is None:
@@ -291,8 +292,29 @@ def build_sampler(config: SamplerConfig | str) -> Sampler:
     return factory(resolved)
 
 
+#: Entry-point group third-party samplers advertise themselves under.
+SAMPLER_ENTRY_POINT_GROUP = "avgen.samplers"
+
+
+def _load_plugins() -> None:
+    """Register third-party samplers advertised through entry points."""
+    from avgen._plugins import load_entry_points
+
+    load_entry_points(
+        SAMPLER_ENTRY_POINT_GROUP,
+        _SAMPLERS,
+        kind="sampler",
+        validate=callable,
+        expected="a callable taking a SamplerConfig and returning a Sampler",
+    )
+
+
 def list_samplers() -> tuple[str, ...]:
-    """Return the registered sampler names, sorted."""
+    """Return the registered sampler names, sorted.
+
+    Includes any advertised through the ``avgen.samplers`` entry-point group.
+    """
+    _load_plugins()
     return tuple(sorted(_SAMPLERS))
 
 
@@ -426,7 +448,8 @@ class HeunSampler(_BaseSampler):
             sigma_t: Current flow time.
             sigma_next: Target flow time.
             denoise: Callback evaluating the model at the provisional endpoint.
-                Required.
+                Required, except on a final step into ``sigma_next = 0`` with
+                ``lower_order_final`` set, where the correction is skipped.
             generator: Unused.
 
         Returns:
@@ -437,13 +460,23 @@ class HeunSampler(_BaseSampler):
         """
         del generator
         self._check(sigma_t, sigma_next)
+        delta = sigma_next - sigma_t
+        if sigma_next == 0.0 and self.config.lower_order_final:
+            # The correction evaluates the model *at* sigma_next, and the flow
+            # parameterisation has a pole there: velocity is (x - x0)/sigma. The
+            # second evaluation is therefore undefined on the last step rather
+            # than merely inaccurate, and averaging it in corrupts the sample
+            # that every earlier step was spent producing. A first-order step
+            # into zero is the exact solution under the solver's own assumption,
+            # so the callback is not required here — and demanding one would
+            # force the caller to supply a value this solver will not use.
+            return x_t + delta * model_output
         if denoise is None:
             raise ValueError(
                 "heun requires a denoise callback: it evaluates the model a "
                 "second time at the provisional endpoint. Pass one, or use "
                 "euler if only one evaluation per step is affordable."
             )
-        delta = sigma_next - sigma_t
         probe = x_t + delta * model_output
         second = denoise(probe, sigma_next)
         return x_t + delta * 0.5 * (model_output + second)

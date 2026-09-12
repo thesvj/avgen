@@ -323,8 +323,19 @@ class _GatedReward:
     extra: str = "rewards"
     package: str = ""
     name: str = ""
+    #: Set when the package cannot be an avgen extra at all, with the reason.
+    #: hpsv2 pins ``pytest==7.2.0``, so declaring it anywhere makes a universal
+    #: lock unsatisfiable and takes every development environment with it.
+    standalone_reason: str = ""
 
     def __init__(self, **_: Any) -> None:
+        if self.standalone_reason:
+            raise RuntimeError(
+                f"the {self.name!r} reward needs the {self.package!r} package, "
+                f"which avgen cannot depend on: {self.standalone_reason}. "
+                f"Install it into its own environment with "
+                f"pip install {self.package}"
+            )
         raise RuntimeError(
             f"the {self.name!r} reward needs the {self.package!r} package, which "
             f"avgen does not depend on; install it with "
@@ -352,6 +363,7 @@ class HPSv2Reward(_GatedReward):
 
     package = "hpsv2"
     name = "hps_v2"
+    standalone_reason = "it pins pytest==7.2.0, which no modern environment can hold"
 
 
 class PickScoreReward(_GatedReward):
@@ -407,6 +419,7 @@ def build_reward(name: str, **options: Any) -> RewardModel:
     Raises:
         KeyError: If the name is unknown, listing what is available.
     """
+    _load_plugins()
     try:
         factory = _REWARDS[name]
     except KeyError:
@@ -416,8 +429,31 @@ def build_reward(name: str, **options: Any) -> RewardModel:
     return factory(**options)
 
 
+#: Entry-point group third-party rewards advertise themselves under. A reward is
+#: the extension most likely to be private — it encodes what you are optimising
+#: for — so shipping one in a separate package must not require a fork.
+REWARD_ENTRY_POINT_GROUP = "avgen.rewards"
+
+
+def _load_plugins() -> None:
+    """Register third-party rewards advertised through entry points."""
+    from avgen._plugins import load_entry_points
+
+    load_entry_points(
+        REWARD_ENTRY_POINT_GROUP,
+        _REWARDS,
+        kind="reward",
+        validate=callable,
+        expected="a callable returning a RewardModel",
+    )
+
+
 def list_rewards() -> tuple[str, ...]:
-    """Return every registered reward name, sorted."""
+    """Return every registered reward name, sorted.
+
+    Includes any advertised through the ``avgen.rewards`` entry-point group.
+    """
+    _load_plugins()
     return tuple(sorted(_REWARDS))
 
 

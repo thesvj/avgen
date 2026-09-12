@@ -122,12 +122,33 @@ def register_metric(name: str) -> Callable[[type[RunningMetric]], type[RunningMe
     return decorate
 
 
+#: Entry-point group third-party metrics advertise themselves under, so a metric
+#: can ship in its own package and be named in a config with no fork and no
+#: import in the training script.
+METRIC_ENTRY_POINT_GROUP = "avgen.metrics"
+
+
+def _load_plugins() -> None:
+    """Register third-party metrics advertised through entry points."""
+    from avgen._plugins import load_entry_points
+
+    load_entry_points(
+        METRIC_ENTRY_POINT_GROUP,
+        _REGISTRY,
+        kind="metric",
+        validate=lambda obj: isinstance(obj, type),
+        expected="a RunningMetric class",
+    )
+
+
 def list_metrics() -> tuple[str, ...]:
     """Return every registered dependency-free metric name, sorted.
 
     Returns:
-        The names accepted by :func:`build_metric`.
+        The names accepted by :func:`build_metric`, including any advertised
+        through the ``avgen.metrics`` entry-point group.
     """
+    _load_plugins()
     return tuple(sorted(_REGISTRY))
 
 
@@ -143,6 +164,7 @@ def metric_class(name: str) -> type[RunningMetric]:
     Raises:
         MetricError: If the name is unknown.
     """
+    _load_plugins()
     if name not in _REGISTRY:
         raise MetricError(
             f"unknown metric {name!r}; available: {', '.join(list_metrics())}. "

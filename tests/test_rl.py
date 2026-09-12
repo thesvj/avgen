@@ -32,6 +32,7 @@ from __future__ import annotations
 import copy
 import inspect
 import math
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -90,6 +91,13 @@ TEXT_TOKENS = 6
 # config can name them and so list_rewards() tells the truth, but constructing
 # one raises with the install command rather than importing at module scope.
 GATED_REWARDS = frozenset({"hps_v2", "pick_score", "video_score"})
+
+# The rewards this package computes itself, with no optional dependency and no
+# downloaded weights. Named rather than derived from the registry, which also
+# surfaces third-party plugins.
+SHIPPED_REWARDS = frozenset(
+    {"temporal_consistency", "motion_magnitude", "av_sync_proxy"}
+)
 
 
 def build_model(seed: int = 0) -> VideoDiT:
@@ -920,23 +928,56 @@ class TestRewards:
         generator = torch.Generator().manual_seed(4)
         media = torch.randn((4, 3, 6, 8, 8), generator=generator)
         prompts = ["a prompt"] * 4
-        scored = 0
-        for name in list_rewards():
-            if name in GATED_REWARDS:
-                continue
+        # Named rather than counted. `list_rewards()` also surfaces anything
+        # installed through the `avgen.rewards` entry-point group, so a count
+        # asserts something about the developer's environment instead of about
+        # the rewards this package ships.
+        for name in SHIPPED_REWARDS:
             reward = build_reward(name)
             scores = reward.score(media, prompts)
             assert scores.shape == (4,), name
             assert scores.dtype is torch.float32, name
             assert bool(torch.isfinite(scores).all()), name
-            scored += 1
-        assert scored == 3
+
+    def test_the_shipped_rewards_are_all_registered(self) -> None:
+        """Guards the list above: a typo would make the loop test nothing."""
+        registered = set(list_rewards())
+        assert registered >= SHIPPED_REWARDS
+        assert registered >= GATED_REWARDS
+
+    def test_hpsv2_is_not_offered_as_an_avgen_extra(self) -> None:
+        """hpsv2 pins pytest==7.2.0.
+
+        Declaring it anywhere — even in an extra nothing else references — makes
+        the universal resolution `uv lock` performs unsatisfiable, and takes
+        every development environment with it. So its message must send the user
+        to a standalone install, and pyproject must not name it.
+        """
+        pyproject = (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(
+            encoding="utf-8"
+        )
+        declaration = pyproject.split("[project.optional-dependencies]")[1].split(
+            "[project.scripts]"
+        )[0]
+        assert '"hpsv2' not in declaration
+
+        with pytest.raises(RuntimeError, match=r"pip install hpsv2") as caught:
+            build_reward("hps_v2")
+        assert "cannot depend on" in str(caught.value)
 
     def test_a_gated_reward_names_the_extra_that_provides_it(self) -> None:
         # Failing at construction rather than at import is what keeps
-        # ``import avgen.rl`` working on a bare CPU box.
-        for name in sorted(GATED_REWARDS):
+        # ``import avgen.rl`` working on a bare CPU box. hps_v2 is excluded
+        # because it cannot be an extra at all; see the test above.
+        for name in sorted(GATED_REWARDS - {"hps_v2"}):
             with pytest.raises(RuntimeError, match=r"avgen\[rewards\]") as info:
+                build_reward(name)
+            assert name in str(info.value)
+
+    def test_every_gated_reward_offers_a_command_that_would_install_it(self) -> None:
+        """These exist only to fail well; the message is the whole experience."""
+        for name in sorted(GATED_REWARDS):
+            with pytest.raises(RuntimeError, match="pip install") as info:
                 build_reward(name)
             assert name in str(info.value)
 

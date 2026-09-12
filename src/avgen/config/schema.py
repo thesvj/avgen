@@ -475,13 +475,17 @@ class TrainConfig:
         ema_decay: EMA decay. Zero disables the EMA entirely.
         ema_warmup_steps: Steps before the EMA starts tracking.
         seed: Master seed. Varies on ``data_rank`` only.
-        gradient_checkpointing: Deprecated alias kept out; use
-            ``parallel.activation.mode``.
         log_every: Steps between metric syncs. Every sync costs a device
             synchronisation, so this is a real throughput knob.
         eval_every: Steps between in-training evaluations. Zero disables.
         seed_deterministic: Whether to force deterministic kernels. Costs
             throughput; buys bit-exact reproduction.
+
+    Note:
+        There is deliberately no ``gradient_checkpointing`` field. Activation
+        checkpointing is a parallelism concern with several modes rather than a
+        boolean, so it lives at ``parallel.activation.mode``. A config that sets
+        the old name gets an unknown-key error naming the replacement.
 
     Raises:
         ValueError: If a rate is non-positive, a count is negative, or the

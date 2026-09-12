@@ -186,6 +186,70 @@ def integrate(
     return current
 
 
+class TestShiftEndpoints:
+    """The shift map fixes both endpoints — and must still do so in float32.
+
+    ``t' = shift*t / (1 + (shift-1)*t)`` gives exactly 1 at t=1 in real
+    arithmetic. In float32 it lands a few ulp off, and for a shift *below* 1.0
+    it lands above 1.0 — which the schedule's own validation rejects. A
+    base_shift of 0.5 is what the shipped multi-node training configs use, so
+    this is a real config crashing on a rounding artifact, not a corner case.
+    """
+
+    @pytest.mark.parametrize("shift", [0.25, 0.5, 0.999, 1.001, 1.75, 3.0, 12.0])
+    def test_shifted_sigmas_never_leave_the_unit_interval(self, shift: float) -> None:
+        sigmas = apply_shift(torch.linspace(1.0, 0.0, 33), shift)
+        assert float(sigmas.max()) <= 1.0
+        assert float(sigmas.min()) >= 0.0
+        assert float(sigmas[0]) == 1.0
+        assert float(sigmas[-1]) == 0.0
+
+    @pytest.mark.parametrize("sequence_length", [256, 4096, 65_536, 131_072])
+    def test_a_dynamic_shift_builds_at_every_sequence_length(
+        self, sequence_length: int
+    ) -> None:
+        schedule = build_sigma_schedule(
+            ScheduleConfig(
+                name="linear",
+                steps=30,
+                dynamic_shift=True,
+                base_length=256,
+                base_shift=0.5,
+                max_length=131_072,
+                max_shift=3.0,
+            ),
+            sequence_length=sequence_length,
+        )
+        assert float(schedule.sigmas[0]) == 1.0
+        assert float(schedule.sigmas[-1]) == 0.0
+
+    def test_a_longer_sequence_spends_more_of_the_budget_at_high_noise(self) -> None:
+        """The reason the shift exists at all.
+
+        A fixed step budget spread evenly resolves an image fine and leaves a
+        long video's global structure unformed, because the structure is decided
+        at high noise. The shift has to move mass there as the sequence grows.
+        """
+
+        def steps_above_half(sequence_length: int) -> int:
+            schedule = build_sigma_schedule(
+                ScheduleConfig(
+                    name="linear",
+                    steps=30,
+                    dynamic_shift=True,
+                    base_length=256,
+                    base_shift=0.5,
+                    max_length=131_072,
+                    max_shift=3.0,
+                ),
+                sequence_length=sequence_length,
+            )
+            return int((schedule.sigmas > 0.5).sum())
+
+        assert steps_above_half(131_072) > steps_above_half(65_536)
+        assert steps_above_half(65_536) > steps_above_half(4_096)
+
+
 class TestSigmaSchedules:
     """A schedule is a strictly decreasing path from noise to exactly zero.
 
@@ -515,6 +579,68 @@ class TestSamplerRegistry:
     def test_rejects_an_invalid_config(self, kwargs: dict[str, Any]) -> None:
         with pytest.raises(ValueError):
             SamplerConfig(**kwargs)
+
+
+class TestEveryOrderIsExactOnAStraightPath:
+    """Rectified flow's path is a straight line, so every solver must be exact.
+
+    That makes this the one test where "correct" is not a tolerance. If a
+    sampler cannot integrate the trajectory it was built for without error, the
+    error it shows on a real model is its own, not the model's.
+
+    The last step is where this bites: the velocity parameterisation is
+    ``(x - x0) / sigma``, which has a pole at ``sigma = 0``, so any solver that
+    evaluates the model *at* ``sigma_next`` on the final step is evaluating
+    something undefined and averaging it into the finished sample.
+    """
+
+    @staticmethod
+    def _integrate(name: str, steps: int = 20) -> float:
+        target = torch.ones(1, 4, 4, 8, 8)
+
+        def denoise(x: torch.Tensor, sigma: float) -> torch.Tensor:
+            return (x - target) / max(sigma, 1e-6)
+
+        sigmas = build_sigma_schedule(
+            ScheduleConfig(name="linear", steps=steps)
+        ).sigmas.tolist()
+        sampler = build_sampler(SamplerConfig(name=name))
+        sampler.reset()
+        torch.manual_seed(0)
+        latents = target + torch.randn_like(target)
+        for index in range(len(sigmas) - 1):
+            latents = sampler.step(
+                denoise(latents, sigmas[index]),
+                latents,
+                sigmas[index],
+                sigmas[index + 1],
+                denoise=denoise,
+            )
+        return float((latents - target).abs().max())
+
+    @pytest.mark.parametrize("name", ["euler", "heun", "dpmpp_2m", "res_multistep"])
+    def test_the_sampler_lands_exactly_on_the_target(self, name: str) -> None:
+        assert self._integrate(name) == pytest.approx(0.0, abs=1e-5)
+
+    def test_heun_does_not_need_a_callback_for_a_final_step_into_zero(self) -> None:
+        """The correction is skipped there, so requiring it is wrong.
+
+        A caller that stops passing `denoise` on the last step is doing the
+        right thing; demanding it anyway forces them to supply a value the
+        solver will not use and cannot define.
+        """
+        sampler = build_sampler(SamplerConfig(name="heun"))
+        sampler.reset()
+        x_t = torch.ones(1, 4)
+        result = sampler.step(torch.full((1, 4), 2.0), x_t, 0.1, 0.0)
+        # First order into zero: x + (0 - 0.1) * 2.0
+        torch.testing.assert_close(result, torch.full((1, 4), 0.8))
+
+    def test_heun_still_demands_a_callback_for_an_interior_step(self) -> None:
+        sampler = build_sampler(SamplerConfig(name="heun"))
+        sampler.reset()
+        with pytest.raises(ValueError, match="requires a denoise callback"):
+            sampler.step(torch.zeros(1, 4), torch.zeros(1, 4), 0.5, 0.25)
 
 
 class TestSamplerCorrectness:

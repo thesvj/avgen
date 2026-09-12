@@ -11,7 +11,9 @@ before a single rank is allocated.
 from __future__ import annotations
 
 import dataclasses
+import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -1149,6 +1151,125 @@ class TestDiffAndSerialisation:
         )
         written = save_config(config, tmp_path / "resolved.yaml")
         assert config_diff(config, load_config(written)) == {}
+
+
+class TestUnknownKeyErrors:
+    """An unknown key is where a config error is cheapest to catch.
+
+    A silently ignored key is a wasted cluster run, so it is a hard error. What
+    the message says then decides whether the fix takes seconds or a search
+    through the schema.
+    """
+
+    def test_a_typo_suggests_the_real_field(self) -> None:
+        with pytest.raises(ConfigError, match=r"did you mean 'steps'\?"):
+            load_config(None, overrides=["train.stpes=5"])
+
+    def test_another_frameworks_spelling_suggests_this_ones(self) -> None:
+        # Not a typo: 'learning_rate' and 'lr' share two characters, so edit
+        # distance scores them far apart and the suggestion that would actually
+        # help is the one that never fires.
+        with pytest.raises(ConfigError, match=r"did you mean 'lr'\?"):
+            load_config(None, overrides=["train.learning_rate=1e-4"])
+
+    @pytest.mark.parametrize(
+        ("typed", "meant"),
+        [
+            ("train.max_steps=10", "steps"),
+            ("train.grad_clip=1.0", "max_grad_norm"),
+            ("train.adam_beta2=0.95", "beta2"),
+            ("parallel.tensor_parallel_size=8", "tensor"),
+            ("data.dataset_path=/x", "root"),
+        ],
+    )
+    def test_the_common_migrations_all_land(self, typed: str, meant: str) -> None:
+        with pytest.raises(ConfigError, match=rf"did you mean '{meant}'\?"):
+            load_config(None, overrides=[typed])
+
+    @pytest.mark.parametrize(
+        ("typed", "meant"),
+        [
+            ("train.gradient_checkpointing=true", "parallel.activation.mode"),
+            ("train.zero_stage=3", "parallel.dp_shard"),
+            ("train.compile=true", "parallel.compile_blocks"),
+            ("train.resume=runs/x", "checkpoint.resume"),
+            ("train.output_dir=runs/x", "output_dir"),
+            ("data.path=/x", "data.root"),
+            ("telemetry.jsonl=a.jsonl", "telemetry.jsonl_path"),
+        ],
+    )
+    def test_a_field_in_another_section_is_named_by_its_full_path(
+        self, typed: str, meant: str
+    ) -> None:
+        """The case a per-section suggestion structurally cannot serve.
+
+        Listing the valid keys of the section the reader is looking in does not
+        help when the field is somewhere else — that is precisely when they are
+        most stuck.
+        """
+        with pytest.raises(ConfigError, match=re.escape(f"did you mean '{meant}'")):
+            load_config(None, overrides=[typed])
+
+    def test_a_cross_section_move_says_it_is_a_move(self) -> None:
+        with pytest.raises(ConfigError, match="another section") as caught:
+            load_config(None, overrides=["train.gradient_checkpointing=true"])
+        assert "parallel.activation.mode" in str(caught.value)
+
+    def test_a_same_section_rename_does_not_claim_to_be_a_move(self) -> None:
+        # Calling a rename a move sends the reader looking in a file that is
+        # already open.
+        with pytest.raises(ConfigError) as caught:
+            load_config(None, overrides=["telemetry.jsonl=a.jsonl"])
+        assert "another section" not in str(caught.value)
+
+    def test_every_redirect_target_actually_exists(self) -> None:
+        """A suggestion naming a field that does not exist is worse than none."""
+        from avgen.config.loader import _REDIRECTS
+
+        base = to_mapping(load_config(None))
+        for source, target in sorted(_REDIRECTS.items()):
+            node: Any = base
+            for segment in target.split("."):
+                assert isinstance(node, dict) and segment in node, (
+                    f"{source!r} redirects to {target!r}, which is not a "
+                    f"configuration field"
+                )
+                node = node[segment]
+
+    @pytest.mark.parametrize(
+        "typed",
+        [
+            "train.world_size=8",
+            "parallel.num_gpus=8",
+            "train.master_addr=host",
+            "parallel.local_rank=0",
+            "train.nnodes=4",
+        ],
+    )
+    def test_a_launcher_setting_says_it_comes_from_the_launcher(
+        self, typed: str
+    ) -> None:
+        """A redirect cannot say "this is not config at all".
+
+        Someone arriving from a framework where the world size *is* config will
+        put it in the config, and the useful answer names where it really comes
+        from rather than listing thirty fields that are not it.
+        """
+        with pytest.raises(ConfigError, match="launcher") as caught:
+            load_config(None, overrides=[typed])
+        assert "Valid keys" not in str(caught.value)
+
+    def test_a_suggestion_replaces_the_wall_of_valid_keys(self) -> None:
+        # train has thirty fields. Printed next to a concrete suggestion they
+        # bury the one word the reader needs.
+        with pytest.raises(ConfigError) as caught:
+            load_config(None, overrides=["train.learning_rate=1e-4"])
+        assert "Valid keys" not in str(caught.value)
+
+    def test_without_a_suggestion_the_valid_keys_are_still_listed(self) -> None:
+        with pytest.raises(ConfigError, match="Valid keys") as caught:
+            load_config(None, overrides=["train.zzzzzzzz=1"])
+        assert "did you mean" not in str(caught.value)
 
 
 class TestOverrideIsolation:

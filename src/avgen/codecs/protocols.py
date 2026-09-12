@@ -165,7 +165,7 @@ class VideoCodec(Protocol):
 
         Args:
             latent_shape: ``(batch, latent_channels, latent_frames,
-            latent_height, latent_width)``.
+                latent_height, latent_width)``.
 
         Returns:
             ``(batch, channels, frames, height, width)``.

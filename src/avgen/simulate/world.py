@@ -63,7 +63,11 @@ class FakeWorld:
             ``fully_shard`` queries the current device of the mesh's device
             type, so asking for ``"cuda"`` on a CPU-only machine fails inside
             PyTorch rather than in avgen.
-        mesh: The mesh, populated on entry.
+
+    Attributes:
+        mesh: The device mesh, populated on entry and ``None`` outside the
+            context. Not a constructor argument: it is built from ``dims`` when
+            the context is entered, because a mesh outlives no rendezvous.
     """
 
     dims: ParallelDims

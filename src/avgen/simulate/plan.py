@@ -354,9 +354,18 @@ def render_plan_table(
         ("scaling_efficiency", 19),
         ("bottleneck", 26),
     ]
-    header = " ".join(name.ljust(width) for name, width in columns)
+    rows = [candidate.summary(accelerator) for candidate in candidates]
+    # Widths are minimums, not maximums. A plan string grows with the number of
+    # non-trivial axes, so the widest rows are the five-way ones — which is to
+    # say the table goes crooked exactly at the scale it exists to describe.
+    widths = {
+        name: max(minimum, len(name), *(len(str(row[name])) for row in rows))
+        for name, minimum in columns
+    }
+    header = " ".join(name.ljust(widths[name]) for name, _ in columns)
     lines = [header, "-" * len(header)]
-    for candidate in candidates:
-        row = candidate.summary(accelerator)
-        lines.append(" ".join(str(row[name]).ljust(width) for name, width in columns))
+    for row in rows:
+        lines.append(
+            " ".join(str(row[name]).ljust(widths[name]) for name, _ in columns)
+        )
     return "\n".join(lines)

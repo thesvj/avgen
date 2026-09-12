@@ -536,8 +536,144 @@ def coerce(where: str, value: Any, annotation: Any) -> Any:
     return value
 
 
-def _suggest(key: str, valid: Sequence[str]) -> str:
-    """Return a ``did you mean`` clause for an unknown key, when one is close."""
+#: Names other frameworks use for the same field. These are not typos, so
+#: difflib scores them far apart — ``learning_rate`` and ``lr`` share two
+#: characters — and the suggestion that would actually help is the one that
+#: never fires. Someone arriving from another trainer types these on the first
+#: try, and the resulting error is a wall of thirty valid keys.
+_ALIASES = {
+    "learning_rate": "lr",
+    "lr_scheduler": "schedule",
+    "scheduler": "schedule",
+    "batch_size": "global_batch_size",
+    "train_batch_size": "global_batch_size",
+    "per_device_batch_size": "micro_batch_size",
+    "gradient_accumulation_steps": "global_batch_size",
+    "max_steps": "steps",
+    "num_steps": "steps",
+    "num_train_epochs": "steps",
+    "epochs": "steps",
+    "grad_clip": "max_grad_norm",
+    "gradient_clipping": "max_grad_norm",
+    "clip_grad_norm": "max_grad_norm",
+    "adam_beta1": "beta1",
+    "adam_beta2": "beta2",
+    "adam_epsilon": "eps",
+    "logging_steps": "log_every",
+    "eval_steps": "eval_every",
+    "save_steps": "save_every",
+    "output_path": "output_dir",
+    "data_path": "root",
+    "dataset_path": "root",
+    "data_dir": "root",
+    "num_gpus": "world_size",
+    "tensor_parallel_size": "tensor",
+    "context_parallel_size": "context",
+    "pipeline_parallel_size": "pipeline",
+    "sequence_parallel_size": "context",
+    "zero_stage": "dp_shard",
+    "bf16": "param_dtype",
+    "fp16": "param_dtype",
+    "gradient_checkpointing": "mode",
+}
+
+
+#: Fields that moved, or that a reader reasonably expects in the wrong section.
+#: Keyed and valued by *full dotted path*, because the suggestion has to name a
+#: different section than the one the key was typed in — a per-section alias
+#: cannot, and stays silent exactly where the reader is most lost.
+_REDIRECTS = {
+    "train.gradient_checkpointing": "parallel.activation.mode",
+    "train.activation_checkpointing": "parallel.activation.mode",
+    "train.zero_stage": "parallel.dp_shard",
+    "train.precision": "parallel.precision.param_dtype",
+    "train.bf16": "parallel.precision.param_dtype",
+    "train.fp16": "parallel.precision.param_dtype",
+    "train.compile": "parallel.compile_blocks",
+    "train.tensor_parallel_size": "parallel.tensor",
+    "train.context_parallel_size": "parallel.context",
+    "train.pipeline_parallel_size": "parallel.pipeline",
+    "train.sequence_parallel": "parallel.sequence_parallel",
+    "train.data_path": "data.root",
+    "train.dataset_path": "data.root",
+    "train.num_workers": "data.num_workers",
+    "train.resume": "checkpoint.resume",
+    "train.save_every": "checkpoint.save_every",
+    "train.output_dir": "output_dir",
+    "train.logging_steps": "train.log_every",
+    "parallel.zero_stage": "parallel.dp_shard",
+    "parallel.gradient_checkpointing": "parallel.activation.mode",
+    "data.path": "data.root",
+    "data.data_path": "data.root",
+    "telemetry.jsonl": "telemetry.jsonl_path",
+    "telemetry.wandb_project": "telemetry.project",
+}
+
+
+#: Keys that are not configuration at all, and why. A redirect cannot express
+#: "this comes from somewhere other than the config", and that is exactly the
+#: confusion someone arriving from a framework where it *is* config will have.
+_NOT_CONFIGURABLE = {
+    "world_size": (
+        "the world size comes from the launcher (torchrun sets WORLD_SIZE), not "
+        "from the config; set the parallelism degrees and avgen derives the rest"
+    ),
+    "num_gpus": (
+        "the world size comes from the launcher (torchrun sets WORLD_SIZE), not "
+        "from the config; set the parallelism degrees and avgen derives the rest"
+    ),
+    "rank": "the rank comes from the launcher, not from the config",
+    "local_rank": "the local rank comes from the launcher, not from the config",
+    "master_addr": "rendezvous is the launcher's job; see --rdzv-endpoint",
+    "master_port": "rendezvous is the launcher's job; see --rdzv-endpoint",
+    "device": (
+        "the device is derived from LOCAL_RANK; a config that names one cannot "
+        "be launched on a machine with a different GPU count"
+    ),
+    "nnodes": "the node count comes from the launcher, not from the config",
+}
+
+
+def _suggest(key: str, valid: Sequence[str], *, where: str = "") -> str:
+    """Return a ``did you mean`` clause for an unknown key, when one is close.
+
+    Three sources, tried in order of how specific they are:
+
+    0. The not-configurable table, for a key that is not config at all — the
+       world size, the rank, the rendezvous endpoint. A redirect cannot say
+       "this comes from the launcher", and that is the confusion someone
+       arriving from a framework where it *is* config will have.
+    1. The redirect table, for a field that lives in a *different* section.
+       This is the case a per-section suggestion structurally cannot serve, and
+       it is where a reader is most stuck: they are looking in the wrong place,
+       so listing the valid keys of the wrong place does not help.
+    2. The alias table, for a field this project spells differently from
+       whichever framework the reader came from.
+    3. Edit distance, for a plain typo.
+
+    Args:
+        key: The unknown field name, unqualified.
+        valid: Field names of the dataclass being built.
+        where: Dotted path of that dataclass, used to resolve a redirect.
+
+    Returns:
+        A clause to append to the error, or an empty string.
+    """
+    reason = _NOT_CONFIGURABLE.get(key)
+    if reason is not None:
+        return f" — {reason}"
+    dotted = f"{where}.{key}" if where else key
+    redirect = _REDIRECTS.get(dotted)
+    if redirect is not None:
+        # Only say "another section" when it is one. A renamed field in the same
+        # section is a rename, and calling it a move sends the reader looking in
+        # a file that is already open.
+        prefix, _, _ = redirect.rpartition(".")
+        elsewhere = " (it is in another section)" if prefix != where else ""
+        return f"; did you mean {redirect!r}?{elsewhere}"
+    alias = _ALIASES.get(key)
+    if alias in valid:
+        return f"; did you mean {alias!r}?"
     close = difflib.get_close_matches(key, valid, n=1, cutoff=0.6)
     return f"; did you mean {close[0]!r}?" if close else ""
 
@@ -567,13 +703,17 @@ def build(cls: type[T], mapping: Mapping[str, Any], *, where: str = "") -> T:
     if unknown:
         # A silently ignored key is a wasted cluster run. Name every one, and
         # point at the nearest real field so the fix is a single edit.
-        details = ", ".join(
-            f"{prefix}{key}{_suggest(key, names)}" for key in sorted(unknown)
-        )
-        raise ConfigError(
-            f"unknown configuration key(s) in {where or cls.__name__}: {details}. "
-            f"Valid keys: {', '.join(names)}"
-        )
+        suggestions = {
+            key: _suggest(key, names, where=where) for key in sorted(unknown)
+        }
+        details = ", ".join(f"{prefix}{key}{hint}" for key, hint in suggestions.items())
+        message = f"unknown configuration key(s) in {where or cls.__name__}: {details}"
+        if not all(suggestions.values()):
+            # The full list is thirty names on some sections. Print it only when
+            # there is nothing better to offer; alongside a concrete suggestion
+            # it buries the one word the reader needs.
+            message += f". Valid keys: {', '.join(names)}"
+        raise ConfigError(message)
 
     kwargs: dict[str, Any] = {}
     for key, value in mapping.items():

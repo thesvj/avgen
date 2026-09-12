@@ -244,6 +244,30 @@ class TestPlanSearch:
         assert "mfu" in table
         assert "bottleneck" in table
 
+    def test_every_column_stays_aligned_however_wide_the_plan(self) -> None:
+        """A plan string grows with the number of non-trivial axes.
+
+        Column widths declared as constants therefore overflow on exactly the
+        five-way plans this table exists to compare, and one long row shifts
+        every column after it — the table goes crooked at scale and nowhere
+        else. Alignment is checked structurally, not by eye.
+        """
+        plans = search_parallel_plan(SHAPE, SearchSpace(world_size=1024), top_k=8)
+        assert any(len(plan.dims.describe()) > 34 for plan in plans), (
+            "this test needs at least one plan wider than the declared column"
+        )
+        lines = render_plan_table(plans, H100_SXM).splitlines()
+        header, rule, *rows = lines
+        assert len(rule) == len(header)
+        # Every row must start each column at the same offset as the header.
+        offsets = [header.index(name) for name in ("memory_gib", "mfu", "bottleneck")]
+        for row in rows:
+            for offset in offsets:
+                assert row[:offset].endswith(" "), (
+                    f"column runs into the one before it:\n{row}"
+                )
+            assert len(row.rstrip()) <= len(header)
+
 
 class TestReport:
     def test_round_trips_through_json(self, tmp_path) -> None:

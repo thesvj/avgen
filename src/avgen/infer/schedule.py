@@ -92,7 +92,13 @@ def apply_shift(sigmas: torch.Tensor, shift: float) -> torch.Tensor:
         raise ValueError(f"shift must be finite and positive; got {shift!r}")
     if shift == 1.0:
         return sigmas
-    return shift * sigmas / (1.0 + (shift - 1.0) * sigmas)
+    shifted = shift * sigmas / (1.0 + (shift - 1.0) * sigmas)
+    # The map fixes 0 and 1 exactly in real arithmetic — at t=1 it is
+    # shift/(1+shift-1) — but in float32 it lands a few ulp off, and a shift
+    # below 1.0 lands *above* 1.0. That is a rounding artifact, not a schedule
+    # that starts above pure noise, so pin the endpoints rather than let the
+    # schedule's own validation reject a legitimate config.
+    return shifted.clamp_(min=0.0, max=1.0) if shifted is not sigmas else shifted
 
 
 def resolution_shift(
