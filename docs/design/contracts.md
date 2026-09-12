@@ -3,7 +3,7 @@
 avgen is built by several people working on several subsystems at once. That
 only works if the interfaces between them are written down, frozen, and changed
 deliberately. The normative document is
-[`CONTRACTS.md`](https://github.com/avgen-project/avgen/blob/main/CONTRACTS.md)
+[`CONTRACTS.md`](https://github.com/thesvj/avgen/blob/main/CONTRACTS.md)
 in the repository root; this page explains the reasoning.
 
 ## What is frozen
@@ -20,7 +20,7 @@ in the repository root; this page explains the reasoning.
 | `ParallelDims` and the mesh dimension names | Plans, checkpoints, and the simulator all index the mesh by name |
 
 Changing any of these requires an
-[RFC](https://github.com/avgen-project/avgen/blob/main/GOVERNANCE.md).
+[RFC](https://github.com/thesvj/avgen/blob/main/GOVERNANCE.md).
 
 ## The model ABI
 
@@ -117,7 +117,7 @@ Some of the style rules are load-bearing:
 
 ## Changing a contract
 
-1. Open an [RFC](https://github.com/avgen-project/avgen/blob/main/GOVERNANCE.md)
+1. Open an [RFC](https://github.com/thesvj/avgen/blob/main/GOVERNANCE.md)
    stating the problem first, the proposal written as it would appear in
    `CONTRACTS.md`, the alternatives and why each lost, the compatibility impact,
    and the migration.
@@ -126,6 +126,6 @@ Some of the style rules are load-bearing:
 4. Implementation updates `CONTRACTS.md`, the docs, and `CHANGELOG.md` in one
    pull request.
 
-If a contract genuinely blocks you, say so in your report rather than editing it
+If a contract genuinely blocks you, open the RFC rather than editing it
 locally. A locally-edited contract is a contract that two subsystems now
 disagree about, and the disagreement will surface as a shape error at 512 ranks.

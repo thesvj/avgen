@@ -1,8 +1,10 @@
-# avgen — internal build contract
+# avgen — interface contract
 
-**Everyone working on this repo reads this file first.** It is the interface
-agreement between subsystems. If you need something that is not here, add it
-here in the same change, do not invent it locally.
+**Read this before your first change.** It is the interface agreement between
+subsystems: what each one may assume about the others, and what it must provide
+in return. If you need something that is not here, add it here in the same
+change rather than inventing it locally — a contract that lives in one caller's
+head is the thing this file exists to prevent.
 
 ---
 
@@ -14,9 +16,10 @@ The authoritative contracts are the source files, already written and frozen:
 - `src/avgen/parallel/` — dims, env, comm, fsdp, tensor, context, pipeline, activation, precision, apply
 - `src/avgen/simulate/` — world, memory, comms, compute, plan, chakra
 
-**Read the ones you depend on before writing anything.** Do not modify a file
-you do not own (see §5). If a core contract genuinely blocks you, say so in your
-report rather than editing it.
+**Read the ones you depend on before writing anything.** Changing a frozen
+contract is not a local decision: every subsystem imports these, so it goes
+through the RFC process in `GOVERNANCE.md` rather than through the change that
+happens to need it.
 
 ---
 
@@ -218,7 +221,7 @@ ActivationCheckpointConfig(mode="selective_op", layer_interval=2, save_op_freque
 
 ## 4. Contracts your subsystem must provide
 
-These are the APIs other agents will import. Implement them exactly.
+These are the APIs the rest of the package imports. Implement them exactly.
 
 ### `avgen.models`
 ```python
@@ -399,20 +402,29 @@ avgen data       {ingest,shard,inspect}
 
 ---
 
-## 5. File ownership — do not write outside your set
+## 5. Subsystem boundaries
 
-| Owner | Paths |
+The package is split so that a change to one subsystem does not require reading
+another. The split is enforced two ways: the import direction rules in
+`CONTRIBUTING.md`, and required review in [`.github/CODEOWNERS`](.github/CODEOWNERS),
+which is the authoritative list of who reviews what.
+
+The boundaries themselves:
+
+| Subsystem | Paths |
 |---|---|
-| lead (me) | `src/avgen/core/**`, `src/avgen/parallel/**`, `src/avgen/simulate/**`, `src/avgen/__init__.py`, `README.md`, `CONTRACTS.md` |
+| frozen core | `src/avgen/core/**`, `src/avgen/parallel/**`, `src/avgen/simulate/**` |
 | models | `src/avgen/models/**` |
 | train | `src/avgen/train/**` |
 | data | `src/avgen/data/**` |
-| checkpoint+telemetry | `src/avgen/checkpoint/**`, `src/avgen/telemetry/**` |
-| infer+codecs | `src/avgen/infer/**`, `src/avgen/codecs/**` |
-| finetune+rl | `src/avgen/finetune/**`, `src/avgen/rl/**` |
-| eval+config+cli | `src/avgen/eval/**`, `src/avgen/config/**`, `src/avgen/cli/**`, `configs/**` |
-| docs+ci | `docs/**`, `.github/**`, `Makefile`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `GOVERNANCE.md`, `CHANGELOG.md`, `CITATION.cff`, `NOTICE`, `.pre-commit-config.yaml`, `.gitignore` |
-| tests | `tests/**`, `examples/**`, `benchmarks/**` |
+| checkpoint, telemetry | `src/avgen/checkpoint/**`, `src/avgen/telemetry/**` |
+| infer, codecs | `src/avgen/infer/**`, `src/avgen/codecs/**` |
+| finetune, rl | `src/avgen/finetune/**`, `src/avgen/rl/**` |
+| eval, config, cli | `src/avgen/eval/**`, `src/avgen/config/**`, `src/avgen/cli/**`, `configs/**` |
+
+Everything under `src/avgen/core/**` and `src/avgen/parallel/**` is imported by
+every other subsystem, which is why §3 calls it frozen: a change there is a
+change to all of them at once.
 
 ---
 
@@ -435,12 +447,16 @@ Violating these produces bugs that only appear on a real cluster.
 
 ---
 
-## 7. Definition of done for your subsystem
+## 7. Definition of done
 
-- Every public symbol exported from the package `__init__.py` with a sorted `__all__`.
-- `ruff check` and `ruff format --check` clean.
-- `mypy --strict` clean for your files.
-- Docstrings complete, comments explain *why*.
-- Your subsystem imports cleanly on CPU with only `torch`, `numpy`, `pyyaml`, `safetensors` installed.
-- You wrote at least a smoke path that runs on CPU with tiny shapes.
-- Report back: what you built, any contract you needed that was missing, anything you could not finish.
+A change to a subsystem is finished when:
+
+- Every public symbol is exported from the package `__init__.py` with a sorted `__all__`.
+- `ruff check` and `ruff format --check` are clean.
+- `mypy --strict` is clean for the files you touched.
+- Docstrings are complete and comments explain *why*, not *what*.
+- The subsystem imports cleanly on CPU with only `torch`, `numpy`, `pyyaml` and `safetensors` installed.
+- There is at least a smoke path that runs on CPU at tiny shapes — the scale
+  rules in §6 are exactly the ones a CPU test cannot catch, so a change that
+  touches them also needs the simulator (`avgen simulate`) or a multi-rank run.
+- Any contract you needed and did not find is added to this file in the same change.

@@ -120,7 +120,7 @@ Dataclasses plus YAML plus dotted CLI overrides. **No Hydra, no OmegaConf, no
 Pydantic.**
 
 ```bash
-avgen train --config configs/av_2b_720p.yaml train.lr=1e-4 parallel.context=8
+avgen train --config configs/train/multinode_512.yaml train.lr=1e-4 parallel.context=8
 ```
 
 The reasoning: a config system whose semantics you have to learn is a config

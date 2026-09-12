@@ -30,7 +30,7 @@ either absent or differently shaped.
 === "from source"
 
     ```bash
-    git clone https://github.com/avgen-project/avgen
+    git clone https://github.com/thesvj/avgen
     cd avgen
     uv sync --all-extras --group dev --group docs
     ```
@@ -61,8 +61,22 @@ a codec and a text tower, which are extras.
 | `data` | `pyarrow`, `av`, `torchaudio` | The offline ingest pipeline: decoding media files and reading columnar datasets. |
 | `tracking` | `tensorboard` | The TensorBoard logger. avgen ships console, JSONL, and no-op loggers with no extra. |
 | `quant` | `torchao` | fp8 training. |
+| `rewards` | `transformers` | Learned preference models for RL post-training. The reference rewards in `avgen.rl.rewards` need nothing. |
 | `fault-tolerance` | `torchft` | Per-step recovery without a full job restart. |
-| `all` | `text`, `codecs`, `data`, `tracking`, `quant` | Convenience. Excludes `fault-tolerance` deliberately — it changes process-group semantics and should be an explicit choice. |
+| `all` | `text`, `codecs`, `data`, `tracking`, `quant`, `rewards` | Convenience. Excludes `fault-tolerance` deliberately — it changes process-group semantics and should be an explicit choice. |
+
+!!! warning "HPSv2 is not an extra"
+
+    The `hps_v2` reward is registered and nameable in a config, but `hpsv2` pins
+    `pytest==7.2.0`. Declaring it anywhere — even in an extra nothing else
+    references — makes a universal lock resolution unsatisfiable and takes every
+    development environment with it. Install it into its own environment:
+
+    ```bash
+    pip install hpsv2
+    ```
+
+    Constructing the reward without it raises with exactly that instruction.
 
 ```bash
 uv add 'avgen[text,codecs]'
@@ -144,11 +158,11 @@ CI does exactly this for every job except the nightly GPU run.
 ## Development install
 
 ```bash
-git clone https://github.com/avgen-project/avgen
+git clone https://github.com/thesvj/avgen
 cd avgen
 make dev        # every extra, dev + docs groups, pre-commit hooks
 make test-fast  # should pass in well under a minute
 ```
 
-See [`CONTRIBUTING.md`](https://github.com/avgen-project/avgen/blob/main/CONTRIBUTING.md)
+See [`CONTRIBUTING.md`](https://github.com/thesvj/avgen/blob/main/CONTRIBUTING.md)
 for the full loop.

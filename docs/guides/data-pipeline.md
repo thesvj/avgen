@@ -120,7 +120,7 @@ never in the hot loop.
 separate "the plan is wrong" from "the data is wrong":
 
 ```bash
-avgen train --config configs/smoke_synthetic.yaml train.total_steps=50
+avgen train --config configs/train/smoke_cpu.yaml train.steps=50
 ```
 
 It is also how you measure whether the loader is your bottleneck: if synthetic

@@ -55,8 +55,8 @@ Before touching real data, prove the plan runs:
 
 ```bash
 torchrun --standalone --nproc-per-node 8 \
-  -m avgen.cli.main train --config configs/smoke_synthetic.yaml \
-  train.total_steps=50
+  -m avgen.cli.main train --config configs/train/smoke_cpu.yaml \
+  train.steps=50
 ```
 
 `SyntheticSource` is deterministic and needs no optional dependency. If this
@@ -66,7 +66,7 @@ smaller search space.
 ## 3. Simulate the plan you intend to run
 
 ```bash
-avgen simulate --config configs/av_2b_480p.yaml --world-size 8
+avgen simulate --config configs/train/node_8gpu.yaml --world-size 8
 ```
 
 Read three numbers before launching:
@@ -85,9 +85,9 @@ Read three numbers before launching:
 ```bash
 torchrun --standalone --nproc-per-node 8 \
   -m avgen.cli.main train \
-  --config configs/av_2b_480p.yaml \
-  data.path=/data/avgen/shards_480p \
-  train.total_steps=20000 \
+  --config configs/train/node_8gpu.yaml \
+  data.root=/data/avgen/shards_480p \
+  train.steps=20000 \
   parallel.context=4 \
   parallel.dp_shard=2
 ```
@@ -170,7 +170,7 @@ Resume by pointing at the run directory; avgen picks up `latest`:
 
 ```bash
 torchrun --standalone --nproc-per-node 8 \
-  -m avgen.cli.main train --config configs/av_2b_480p.yaml \
+  -m avgen.cli.main train --config configs/train/node_8gpu.yaml \
   checkpoint.resume=runs/av_2b_480p
 ```
 

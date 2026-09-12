@@ -11,7 +11,7 @@ body:
         is required below — please do not replace them with "the usual setup".
 
         Security problems do **not** belong here. Report them privately:
-        https://github.com/avgen-project/avgen/security/advisories/new
+        https://github.com/thesvj/avgen/security/advisories/new
 
   - type: checkboxes
     id: preflight
@@ -50,7 +50,7 @@ body:
       render: shell
       placeholder: |
         torchrun --nnodes 8 --nproc-per-node 8 \
-          -m avgen.cli.main train --config configs/av_2b_720p.yaml \
+          -m avgen.cli.main train --config configs/train/multinode_512.yaml \
           parallel.context=8 train.lr=1e-4
     validations:
       required: true

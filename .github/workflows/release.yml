@@ -91,7 +91,7 @@ jobs:
     # OIDC identity. No API token exists anywhere — not in a secret, not in a
     # maintainer's password manager, not in a leaked log. Configure the
     # publisher once at https://pypi.org/manage/project/avgen/settings/publishing/
-    # for repository avgen-project/avgen, workflow release.yml, environment pypi.
+    # for repository thesvj/avgen, workflow release.yml, environment pypi.
     environment:
       name: pypi
       url: https://pypi.org/p/avgen

@@ -1,0 +1,30 @@
+name: DCO
+
+# CONTRIBUTING.md requires a Signed-off-by line on every commit. A requirement
+# nobody checks is a requirement that silently lapses, and the provenance it
+# records cannot be reconstructed after the fact — so it is a gate, not a note.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  signed-off-by:
+    name: every commit is signed off
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The whole PR range, not just the tip: an unsigned commit in the
+          # middle of a branch is exactly the case a shallow clone misses.
+          fetch-depth: 0
+
+      - name: Check Signed-off-by on every commit in the range
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: .github/scripts/check_dco.sh "$BASE" "$HEAD"

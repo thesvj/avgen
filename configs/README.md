@@ -97,12 +97,35 @@ detail: YAML 1.1 parses `1e-4` as the *string* `"1e-4"` because it lacks a
 decimal point, so a loader that guesses from the text hands a string to your
 optimizer. Reading the annotation is what makes the obvious spelling work.
 
-**An unknown key is a hard error**, with the nearest valid field name suggested:
+**An unknown key is a hard error**, with the nearest valid field name suggested.
+The suggestion covers typos and the names other trainers use for the same field,
+so arriving from another framework costs one error rather than a search:
 
 ```
 $ avgen train --config ... train.learning_rate=1e-4
 avgen: error: unknown configuration key(s) in train: train.learning_rate;
-did you mean 'lr'? Valid keys: steps, global_batch_size, ...
+did you mean 'lr'?
+```
+
+It also catches the two cases a per-section suggestion cannot. A field that
+lives in a **different section** is named by its full path, because listing the
+valid keys of the section you are looking in does not help when the field is
+somewhere else:
+
+```
+$ avgen train --config ... train.gradient_checkpointing=true
+avgen: error: unknown configuration key(s) in train: train.gradient_checkpointing;
+did you mean 'parallel.activation.mode'? (it is in another section)
+```
+
+And a setting that is **not configuration at all** says where it really comes
+from:
+
+```
+$ avgen train --config ... train.world_size=8
+avgen: error: unknown configuration key(s) in train: train.world_size — the world
+size comes from the launcher (torchrun sets WORLD_SIZE), not from the config; set
+the parallelism degrees and avgen derives the rest
 ```
 
 A silently ignored typo in a config is a wasted cluster run. `lr_warmup_steps`

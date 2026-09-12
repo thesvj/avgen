@@ -57,18 +57,24 @@ fault-tolerance = ["torchft>=0.1"]
 # Learned reward models for reinforcement-learning finetuning. The dependency-free
 # reference rewards in avgen.rl.rewards need none of this; these are the gated
 # preference models that a real alignment run wants.
-rewards = ["transformers>=4.44", "hpsv2>=1.2"]
+rewards = ["transformers>=4.44"]
+# There is deliberately no `hps` extra. hpsv2 pins `pytest==7.2.0`, so declaring
+# it anywhere — even in an extra nothing else references — makes the universal
+# resolution `uv lock` performs unsatisfiable, and every developer environment
+# along with it. The HPSv2 reward is still registered and still nameable in a
+# config; it raises at construction with an install command. Install it into its
+# own environment:  pip install hpsv2
 all = ["avgen[text,codecs,data,tracking,quant,rewards]"]
 
 [project.scripts]
 avgen = "avgen.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/avgen-project/avgen"
-Documentation = "https://avgen-project.github.io/avgen"
-Repository = "https://github.com/avgen-project/avgen"
-Issues = "https://github.com/avgen-project/avgen/issues"
-Changelog = "https://github.com/avgen-project/avgen/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/thesvj/avgen"
+Documentation = "https://thesvj.github.io/avgen"
+Repository = "https://github.com/thesvj/avgen"
+Issues = "https://github.com/thesvj/avgen/issues"
+Changelog = "https://github.com/thesvj/avgen/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [

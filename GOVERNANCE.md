@@ -7,6 +7,32 @@ gets made.
 It is deliberately lightweight. The project is young; the process should be the
 smallest one that keeps the codebase coherent.
 
+## Current state, stated plainly
+
+**Today there is one maintainer.** The roles, votes and comment periods below
+describe how the project is meant to operate as people join, not a committee
+that already exists — and a document that pretended otherwise would waste the
+time of the first person who tried to use it.
+
+What that means in practice right now:
+
+- Everything in the **Decision process** section still applies to *you*: a
+  change is discussed in the open, in the issue or the pull request, and the
+  reasoning is written down. That part is not contingent on headcount.
+- The comment periods are real, not theatre. An RFC still gets its ten working
+  days, because the point of the delay is to give anyone reading time to object,
+  and there is no quorum to shortcut.
+- Where this document says "maintainer consensus" or "steering-group majority",
+  read it today as one person's decision, recorded with its reasoning in the
+  issue so it can be argued with later.
+- `.github/CODEOWNERS` currently routes every path to the same person. It is
+  split by area so the split is visible and ready, not because the areas have
+  separate owners yet.
+
+The first people to become maintainers under the process below are the ones who
+make it real. Until then, this is a commitment about how decisions will be made,
+published in advance so it cannot be quietly redefined later to suit an outcome.
+
 ---
 
 ## Principles

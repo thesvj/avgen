@@ -8,11 +8,13 @@
 [![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12%20%7C%203.13-blue.svg)](pyproject.toml)
 [![PyTorch](https://img.shields.io/badge/pytorch-%E2%89%A5%202.6-ee4c2c.svg)](https://pytorch.org)
 
-[Documentation](https://avgen-project.github.io/avgen) ·
+[Documentation](https://thesvj.github.io/avgen) ·
 [Quickstart](#quickstart) ·
+[Examples](examples/) ·
 [Why this exists](#the-gap) ·
 [Design](#design-commitments) ·
-[Contributing](CONTRIBUTING.md)
+[Contributing](CONTRIBUTING.md) ·
+[Support](SUPPORT.md)
 
 </div>
 
@@ -87,15 +89,18 @@ Or from Python:
 
 ```python
 import avgen
+from avgen.config.resolve import model_kwargs
 
-dims  = avgen.ParallelDims.from_env(context=4, tensor=8)
-model = avgen.build_model("video_dit", avgen.load_config("configs/model/dit_2b.yaml").model)
+config = avgen.load_config("configs/train/multinode_512.yaml")
+model = avgen.build_model(config.model.name, model_kwargs(config))
 
 # Check it fits, and where the time goes, before touching the cluster.
+dims = avgen.ParallelDims(world_size=512, context=4, tensor=8)
 print(avgen.simulate_config(model.model_shape(sequence_length=65_536), dims).render())
 
+# Under torchrun, ParallelDims.from_env() reads the world size for you.
 parallel = avgen.parallelize(model, dims)
-avgen.Trainer(state, objective, parallel, config).fit(loader, total_steps=100_000)
+avgen.Trainer(state, objective, parallel, trainer_config).fit(loader, total_steps=100_000)
 ```
 
 ## The simulator
@@ -239,8 +244,19 @@ class MyDiT(nn.Module):
     def tensor_parallel_plan(self, *, sequence_parallel): ...
 ```
 
-Or ship it in your own package via an `avgen.models` entry point — no fork
-required. Same for `avgen.metrics`, `avgen.samplers`, `avgen.rewards`.
+Or ship it in your own package and advertise it through an entry point — no fork,
+and no import in the training script:
+
+```toml
+# your package's pyproject.toml
+[project.entry-points."avgen.models"]
+my_dit = "my_package:MyDiT"
+```
+
+Four groups: `avgen.models`, `avgen.metrics`, `avgen.samplers`, `avgen.rewards`.
+A plugin that fails to load raises and names the group, the name and the value —
+a plugin that silently did not load is indistinguishable from a typo in a config,
+hours later, on a cluster.
 
 ## Status
 

@@ -70,7 +70,7 @@ corrupted save loses the run.
 ## Resume
 
 ```bash
-avgen train --config configs/av_2b_720p.yaml checkpoint.resume=runs/exp
+avgen train --config configs/train/multinode_512.yaml checkpoint.resume=runs/exp
 ```
 
 Pointing at the run directory picks up `latest`. Pointing at a specific step
@@ -99,7 +99,7 @@ export_huggingface("release/hf", model)
 checkpoint from an untrusted source is remote code execution by design, which is
 why avgen never reaches for `torch.load` with `weights_only=False` on a file the
 user did not explicitly opt into (see
-[`SECURITY.md`](https://github.com/avgen-project/avgen/blob/main/SECURITY.md)).
+[`SECURITY.md`](https://github.com/thesvj/avgen/blob/main/SECURITY.md)).
 
 Export the EMA weights, not the raw ones, unless you have a reason not to.
 

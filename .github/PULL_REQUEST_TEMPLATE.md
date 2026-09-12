@@ -26,7 +26,11 @@ Related issue / RFC:
 - [ ] `make lint`
 - [ ] `make type`
 - [ ] `make test`
+- [ ] `make docs` — the build is `--strict`, so a docstring documenting a
+      parameter that does not exist fails it
 - [ ] New tests cover the change (a bug fix includes the test that fails without it)
+- [ ] If you changed a public signature, the `examples/` that use it still run
+      (`pytest tests/test_examples.py`) — they are the first code a new user copies
 - [ ] Ran on a GPU — describe how many, and which:
 - [ ] Ran multi-node — describe world size and topology:
 

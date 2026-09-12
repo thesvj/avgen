@@ -171,7 +171,7 @@ sync at log cadence.
 The simulator applies the real CP plan at any world size on one CPU machine:
 
 ```bash
-avgen simulate --config configs/av_2b_720p.yaml --world-size 512
+avgen simulate --config configs/train/multinode_512.yaml --world-size 512
 ```
 
 Look at `bottleneck`. If it says `cp_ring_attention`, you have over-sharded the

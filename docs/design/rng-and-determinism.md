@@ -119,10 +119,10 @@ believe:
 
 ```bash
 # Same seed, same rank count, twice.
-avgen train --config configs/smoke.yaml train.total_steps=50 train.seed=0 \
-  telemetry.jsonl=runs/a.jsonl
-avgen train --config configs/smoke.yaml train.total_steps=50 train.seed=0 \
-  telemetry.jsonl=runs/b.jsonl
+avgen train --config configs/train/smoke_cpu.yaml train.steps=50 train.seed=0 \
+  telemetry.jsonl_path=runs/a.jsonl
+avgen train --config configs/train/smoke_cpu.yaml train.steps=50 train.seed=0 \
+  telemetry.jsonl_path=runs/b.jsonl
 diff <(jq .loss runs/a.jsonl) <(jq .loss runs/b.jsonl)
 ```
 

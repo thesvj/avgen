@@ -123,7 +123,7 @@ Then run it:
 
 ```bash
 torchrun --nnodes 128 --nproc-per-node 8 \
-  -m avgen.cli.main train --config configs/av_2b_720p.yaml parallel.context=8
+  -m avgen.cli.main train --config configs/train/multinode_512.yaml parallel.context=8
 ```
 
 ---
@@ -180,4 +180,4 @@ when you need it.
 ## License and citation
 
 Apache-2.0. If avgen is useful in published work, see
-[`CITATION.cff`](https://github.com/avgen-project/avgen/blob/main/CITATION.cff).
+[`CITATION.cff`](https://github.com/thesvj/avgen/blob/main/CITATION.cff).

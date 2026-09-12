@@ -20,13 +20,12 @@ minor", and this section will be updated in the same release.
 
 Report privately through GitHub Security Advisories:
 
-1. Go to https://github.com/avgen-project/avgen/security/advisories/new
+1. Go to https://github.com/thesvj/avgen/security/advisories/new
 2. Describe the issue, the affected version, and how to reproduce it.
 3. Include the impact you believe it has, and any suggested fix.
 
 If you cannot use GitHub Security Advisories, email
-**security@avgen-project.org** *(placeholder — replace with the real contact
-before the first public release)*.
+**saij@iiitd.ac.in**.
 
 ### What to expect
 

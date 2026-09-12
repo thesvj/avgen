@@ -120,20 +120,40 @@ simulator that makes a large-scale parallelism plan reviewable before it is run.
 #### Project
 
 - Documentation site built with MkDocs Material, with an auto-generated API
-  reference.
+  reference. The build runs in strict mode, so a docstring documenting a
+  parameter that does not exist fails CI.
 - CI on Python 3.11, 3.12, and 3.13; a simulator workflow that fails the build
   when a reference parallelism plan stops fitting or its predicted MFU
-  regresses; a nightly GPU job on a self-hosted runner.
+  regresses; a nightly GPU job on a self-hosted runner; a DCO gate that checks
+  every commit in a pull request range, runnable locally with
+  `.github/scripts/check_dco.sh`.
+- `examples/` — five complete programs that run on a CPU in seconds, each
+  executed by the test suite, because an example that no longer runs is the
+  first code a new user copies.
+- `benchmarks/bench_step.py` — measures a real training step and prints the
+  `avgen plan` invocation to compare it against, so the simulator's error stays
+  a known quantity rather than an assumption.
+- Contributor documentation: `CONTRIBUTING.md`, `CONTRACTS.md`, `GOVERNANCE.md`,
+  `RELEASING.md`, `SUPPORT.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, plus issue
+  and RFC templates and `CODEOWNERS`.
+- Config errors name the fix, not just the mistake: a typo, a field another
+  framework spells differently, a field that lives in another section (named by
+  its full path), and a setting that comes from the launcher rather than the
+  config all produce a specific suggestion instead of a list of valid keys.
 
 ### Notes
 
 - Requires Python ≥ 3.11 and `torch >= 2.6`.
 - The core package depends only on torch, numpy, pyyaml, and safetensors.
   Everything else is an opt-in extra: `text`, `codecs`, `data`, `tracking`,
-  `quant`, `fault-tolerance`.
-- Distributed execution is entirely PyTorch-native. Ray, DeepSpeed, Megatron,
-  Accelerate, and Lightning are not dependencies; Ray appears only as an
-  optional launcher adapter.
+  `quant`, `rewards`, `fault-tolerance`.
+- Distributed execution is entirely PyTorch-native, and launching is `torchrun`.
+  Ray, DeepSpeed, Megatron-Core, Accelerate and Lightning are not dependencies
+  in any form, optional or otherwise.
+- The `hps_v2` reward is registered but `hpsv2` is deliberately not declared as
+  an extra: it pins `pytest==7.2.0`, which makes a universal lock resolution
+  unsatisfiable. Install it into its own environment; the reward raises with
+  that instruction.
 
-[Unreleased]: https://github.com/avgen-project/avgen/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/avgen-project/avgen/releases/tag/v0.1.0
+[Unreleased]: https://github.com/thesvj/avgen/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/thesvj/avgen/releases/tag/v0.1.0

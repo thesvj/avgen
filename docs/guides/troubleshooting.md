@@ -35,9 +35,14 @@ single comparison usually identifies the node in a minute.
 Set the collective timeout deliberately:
 
 ```python
+from datetime import timedelta
+
 from avgen.parallel.env import init_distributed
 
-env = init_distributed(timeout_seconds=600, init_timeout_seconds=1800)
+env = init_distributed(
+    timeout=timedelta(seconds=600),
+    init_timeout=timedelta(minutes=30),
+)
 ```
 
 The first step is slow — `torch.compile`, lazy NCCL channel setup, the first
@@ -308,7 +313,7 @@ Peak memory flat, MFU falling, tokens/s falling.
 ## Getting help
 
 If none of this resolves it, open a
-[bug report](https://github.com/avgen-project/avgen/issues/new?template=bug_report.yml).
+[bug report](https://github.com/thesvj/avgen/issues/new?template=bug_report.yml).
 The form asks for the avgen version, torch version, GPU, world size, parallelism
 degrees, and the exact resolved config — all six, because a distributed training
 bug is not reproducible without them. Include the simulator output for your plan

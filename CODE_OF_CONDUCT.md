@@ -60,8 +60,7 @@ representative at an online or offline event.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the community leaders responsible for enforcement at
-**conduct@avgen-project.org** *(placeholder — replace with the real contact
-before the first public release)*.
+**saij@iiitd.ac.in**.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

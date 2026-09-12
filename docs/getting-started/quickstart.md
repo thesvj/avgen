@@ -10,8 +10,7 @@ most of understanding the framework.
 ```python
 import torch
 
-from avgen.core.patchify import GridPatchifier, build_spatial_coords
-from avgen.core.tokens import PatchLayout
+from avgen.core.patchify import GridPatchifier
 
 # A tiny latent video: batch 2, 4 channels, 8 latent frames, 16x16 latent pixels.
 latents = torch.randn(2, 4, 8, 16, 16)
@@ -23,28 +22,38 @@ print(layout.grid, layout.num_tokens, layout.patch_dim)
 ```
 
 The grid `(8, 8, 8)` collapses into a single sequence of 512 tokens, each 16
-features wide. Coordinates are carried explicitly, in **physical units**:
+features wide. What you hand `to_tokens` is metadata about the *grid*: a
+timestamp per frame, in seconds, and a validity mask per latent.
 
 ```python
-coords = build_spatial_coords(layout, batch=2, fps=8.0, device=latents.device)
-print(coords.shape, coords[0, 0], coords[0, -1])
-# torch.Size([2, 512, 3])  tensor([0., 0., 0.])  tensor([0.875, 7., 7.])
-```
+# Physical time, in seconds. Eight frames at 8fps -> 0.000 .. 0.875.
+times = torch.arange(layout.frames).float().div(8.0).expand(2, layout.frames)
+mask = torch.ones(2, layout.frames, layout.height, layout.width, dtype=torch.bool)
 
-The last token sits at 0.875 seconds, row 7, column 7 — seconds and latent
-pixels, not indices. That is what lets a shuffled, packed, or context-parallel
-sharded sequence still know where each token came from.
-
-```python
 stream = patchifier.to_tokens(
     latents,
-    positions=coords,
-    mask=torch.ones(2, layout.num_tokens, dtype=torch.bool),
+    positions=times,
+    mask=mask,
     noise_level=torch.zeros(2),
 )
 print(stream.tokens.shape, stream.length, stream.width)
 # torch.Size([2, 512, 16]) 512 16
+```
 
+Coordinates come out carried explicitly, in **physical units**:
+
+```python
+print(stream.coords.shape, stream.coords[0, 0], stream.coords[0, -1])
+# torch.Size([2, 512, 3])  tensor([0., 0., 0.])  tensor([ 0.8750, 14., 14.])
+```
+
+The last token sits at 0.875 seconds, latent row 14, latent column 14 — seconds
+and latent pixels, not indices. (Row 14, not 7, because a 2x2 patch is addressed
+by the latent pixel it starts at, so the model can extrapolate to a higher
+resolution at the same pixel pitch.) That is what lets a shuffled, packed, or
+context-parallel sharded sequence still know where each token came from.
+
+```python
 # The round trip is exact.
 assert torch.allclose(patchifier.to_grid(stream), latents)
 ```
@@ -110,7 +119,7 @@ it the right way to check that a plan actually runs before you point it at real
 data.
 
 ```bash
-avgen train --config configs/smoke_cpu.yaml train.total_steps=20
+avgen train --config configs/train/smoke_cpu.yaml train.steps=20
 ```
 
 Or in Python:
@@ -118,7 +127,7 @@ Or in Python:
 ```python
 from avgen.config import load_config
 
-config = load_config("configs/smoke_cpu.yaml", overrides=["train.total_steps=20"])
+config = load_config("configs/train/smoke_cpu.yaml", overrides=["train.steps=20"])
 ```
 
 Expect a loss that decreases and nothing else — the point is that the plumbing
@@ -129,7 +138,7 @@ optimizer → checkpoint.
 
 ```bash
 torchrun --standalone --nproc-per-node 8 \
-  -m avgen.cli.main train --config configs/av_2b_480p.yaml \
+  -m avgen.cli.main train --config configs/train/node_8gpu.yaml \
   parallel.context=4 parallel.dp_shard=2
 ```
 

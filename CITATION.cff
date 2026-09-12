@@ -17,11 +17,11 @@ abstract: >-
 type: software
 version: 0.1.0
 license: Apache-2.0
-repository-code: "https://github.com/avgen-project/avgen"
-url: "https://avgen-project.github.io/avgen"
+repository-code: "https://github.com/thesvj/avgen"
+url: "https://thesvj.github.io/avgen"
 authors:
   - name: "The avgen authors"
-    website: "https://github.com/avgen-project/avgen"
+    website: "https://github.com/thesvj/avgen"
 keywords:
   - pytorch
   - video-generation

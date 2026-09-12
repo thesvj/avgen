@@ -2,9 +2,9 @@ site_name: avgen
 site_description: >-
   A PyTorch-native framework for training video and audio-video generation
   models at scale.
-site_url: https://avgen-project.github.io/avgen
-repo_url: https://github.com/avgen-project/avgen
-repo_name: avgen-project/avgen
+site_url: https://thesvj.github.io/avgen
+repo_url: https://github.com/thesvj/avgen
+repo_name: thesvj/avgen
 edit_uri: edit/main/docs/
 copyright: Copyright &copy; 2026 The avgen authors — Apache-2.0
 
@@ -138,15 +138,17 @@ nav:
       - Adding a parallelism plan: design/adding-a-parallelism-plan.md
   - API reference: reference/
   - Project:
-      - Contributing: https://github.com/avgen-project/avgen/blob/main/CONTRIBUTING.md
-      - Governance: https://github.com/avgen-project/avgen/blob/main/GOVERNANCE.md
-      - Security: https://github.com/avgen-project/avgen/blob/main/SECURITY.md
-      - Changelog: https://github.com/avgen-project/avgen/blob/main/CHANGELOG.md
+      - Contributing: contributing/index.md
+      - Governance: https://github.com/thesvj/avgen/blob/main/GOVERNANCE.md
+      - Releasing: https://github.com/thesvj/avgen/blob/main/RELEASING.md
+      - Support: https://github.com/thesvj/avgen/blob/main/SUPPORT.md
+      - Security: https://github.com/thesvj/avgen/blob/main/SECURITY.md
+      - Changelog: https://github.com/thesvj/avgen/blob/main/CHANGELOG.md
 
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/avgen-project/avgen
+      link: https://github.com/thesvj/avgen
 
 watch:
   - src/avgen

@@ -14,7 +14,7 @@ else is supported, because a reproducible lockfile is the only way a distributed
 bug report is actionable.
 
 ```bash
-git clone https://github.com/avgen-project/avgen
+git clone https://github.com/thesvj/avgen
 cd avgen
 make dev          # uv sync --all-extras --group dev --group docs + pre-commit install
 ```
@@ -48,9 +48,13 @@ make type         # mypy --strict on src/avgen
 make test         # everything not marked gpu/multigpu
 ```
 
-`make test-fast` deselects `slow`, `gpu`, `multigpu` and `optional_deps`, runs
-under `pytest -x -q -n auto`, and should finish in well under a minute. It is
-the gate for "am I about to waste a CI run". `make test` is what CI runs.
+`make test-fast` deselects `slow`, `gpu`, `multigpu` and `optional_deps` and runs
+under `pytest -x -q -n auto`. On sixteen cores it is about a minute and a half
+for roughly 1,520 tests; most of that is real forward and backward passes, not
+overhead. It is the gate
+for "am I about to waste a CI run". `make test` is what CI runs, and it adds the
+`slow` suites — the shipped examples, the benchmark, and the multi-rank gloo
+checks, each of which spawns interpreters and so costs seconds apiece.
 
 Markers, defined in `pyproject.toml`:
 
@@ -58,7 +62,7 @@ Markers, defined in `pyproject.toml`:
 |---|---|
 | `gpu` | Needs at least one CUDA device |
 | `multigpu` | Needs at least two CUDA devices |
-| `slow` | Excluded from the fast subset |
+| `slow` | Excluded from the fast subset. Use it for anything that spawns a subprocess or a rank group — the cost is the interpreter, not the assertion |
 | `optional_deps` | Needs an optional extra installed |
 
 GPU-marked tests run nightly on a self-hosted runner
@@ -117,6 +121,23 @@ find yourself editing `src/avgen/core/` or `src/avgen/parallel/` to add a
 feature, stop and open an issue — either the registry is missing a hook, or the
 change belongs in a different place.
 
+You do not have to contribute an extension at all. Each registry also reads an
+entry-point group, so an extension can live in your own package:
+
+| Group | Registry | Resolves to |
+|---|---|---|
+| `avgen.models` | `avgen.models.registry` | an `nn.Module` subclass |
+| `avgen.metrics` | `avgen.eval.protocols` | a `RunningMetric` class |
+| `avgen.samplers` | `avgen.infer.sampler` | a callable taking a `SamplerConfig` |
+| `avgen.rewards` | `avgen.rl.rewards` | a callable returning a `RewardModel` |
+
+Discovery is sorted by name — unordered iteration would let two ranks with
+identical packages register in different orders, and any registry whose order
+reaches a computation is then a silent cross-rank divergence. A plugin that
+cannot be imported, or that resolves to the wrong sort of object, raises at load
+time naming the group, the name and the value: a plugin that silently did not
+load is indistinguishable from a typo in a config, hours later, on a cluster.
+
 ### A new model
 
 1. Subclass `nn.Module`, take a frozen dataclass config, and implement
@@ -154,6 +175,25 @@ to a transformed model, applied by `avgen.parallel.apply.parallelize`. It must
 be idempotent under a re-apply, must not assume a GPU is present, and must be
 exercised by a simulator test — see the next section.
 
+### A new example or benchmark
+
+`examples/` holds complete, runnable programs — not fragments. Every one is
+executed by `tests/test_examples.py`, because an example that no longer runs is
+worse than no example: it is the first code a new user copies, and it fails on
+their machine instead of in CI.
+
+An example must run on a CPU in seconds with no dataset, no download and no
+network, must print something a reader can check against the prose, and must be
+listed in [`examples/README.md`](examples/README.md) — a test asserts that too,
+since an example nobody is pointed at is an example nobody reads.
+
+`benchmarks/` measures the real thing so the simulator's predictions stay a
+known quantity rather than an assumption. A benchmark reports a median and a
+spread rather than a single number, discards warmup explicitly and says how many
+steps it dropped, and names the hardware, shapes and precision in its own output
+so a result pasted into an issue is interpretable without the command that
+produced it. See [`benchmarks/README.md`](benchmarks/README.md).
+
 ### A new metric
 
 Implement `avgen.eval.Metric` (`update`/`compute`/`reset`), register it with
@@ -190,8 +230,8 @@ by 30%.
 To explore rather than check, use the CLI:
 
 ```bash
-uv run avgen plan --model 2b --world-size 512 --seq-len 65536
-uv run avgen simulate --config configs/your_run.yaml --world-size 1024
+uv run avgen plan --world-size 512 --seq-len 65536 --params 2e9 --depth 32 --width 2560
+uv run avgen simulate --config configs/train/multinode_1024.yaml --world-size 1024
 ```
 
 What the simulator is exact about: shapes, sharding, memory accounting,
@@ -216,6 +256,14 @@ git commit -s -m "parallel: keep tp innermost when pp is enabled"
 
 ```bash
 git rebase --signoff main
+git push --force-with-lease
+```
+
+This is a CI gate (`.github/workflows/dco.yml`), not a request. Check it before
+pushing, with the same script CI runs:
+
+```bash
+.github/scripts/check_dco.sh origin/main HEAD
 ```
 
 There is no CLA. Signing off means you certify you wrote the change, or have
@@ -265,7 +313,7 @@ Reviewers check these explicitly. Please check them yourself first.
 
 ## Reporting bugs
 
-Use the [bug report form](https://github.com/avgen-project/avgen/issues/new?template=bug_report.yml).
+Use the [bug report form](https://github.com/thesvj/avgen/issues/new?template=bug_report.yml).
 It asks for the avgen version, torch version, GPU, world size, parallelism
 degrees, and the exact config, because a distributed training bug is not
 reproducible without all six.
