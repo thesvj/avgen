@@ -1,5 +1,10 @@
 <div align="center">
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.svg">
+  <img src="docs/assets/logo-light.svg" alt="avgen" width="96" height="96">
+</picture>
+
 # avgen
 
 **Train video generation models at scale — pretraining through RL — on PyTorch primitives and nothing else.**

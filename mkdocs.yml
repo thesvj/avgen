@@ -18,6 +18,11 @@ strict: true
 theme:
   name: material
   language: en
+  # The mark is theme-aware by having two files rather than one that recolours:
+  # a stroke-and-knockout design needs to know the background it sits on, and
+  # `currentColor` cannot supply that for the knockout.
+  logo: assets/logo-dark.svg
+  favicon: assets/favicon.svg
   icon:
     repo: fontawesome/brands/github
   features:
