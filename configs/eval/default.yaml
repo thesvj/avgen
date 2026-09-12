@@ -1,0 +1,63 @@
+# Default evaluation suite.
+#
+# Everything under `eval:` below the metric list is PINNED into the report and
+# checked before two reports may be compared. Change any of it and avgen will
+# refuse the comparison — which is the point. Most reported video-generation
+# comparisons are invalid because the two numbers came from different steps,
+# guidance, samplers, or prompt sets, and none of it was stated.
+#
+# The metric list is deliberately a set of PAIRS. Every dependency-free metric
+# here is trivially maximisable on its own:
+#
+#   temporal_consistency  A frozen frame scores a perfect 1.0.
+#   motion_magnitude      Independent per-frame noise scores maximally.
+#   flicker_index         ~0 for smooth motion, ~3 for temporally independent
+#                         frames, >3 for alternating flicker. A reading near 3
+#                         means the model learned no temporal structure at all.
+#   static_frames         The direct check for the most common degenerate T2V
+#                         output: a still image with a dusting of noise.
+#   sharpness             Its `decay` statistic (last third over first third) is
+#                         the signature of continuation and autoregressive
+#                         models bleeding detail — obvious side by side and
+#                         invisible in an FVD score.
+#
+# Reading any one of them alone produces a wrong conclusion. Reading
+# temporal_consistency without motion_magnitude in particular rewards exactly
+# the failure it looks like it guards against.
+#
+# Learned metrics (fvd, fid, clip_score, video_score, hps) can be named here
+# too. avgen refuses them with an install command when their backend is
+# missing; it never substitutes a different metric under the same name.
+_base_: ../model/dit_2b.yaml
+
+eval:
+  metrics:
+    - temporal_consistency
+    - motion_magnitude
+    - flicker_index
+    - static_frames
+    - sharpness
+
+  prompts_file: ""      # empty uses avgen's built-in prompt list, which is fine
+                        # for a smoke test and meaningless as a reported number
+  num_prompts: 0        # 0 uses all of them
+  batch_size: 1
+
+  # --- pinned: changing any of these invalidates a comparison ---
+  seed: 0
+  steps: 30
+  guidance: 5.0
+  sampler: euler
+  negative_prompt: ""
+  frames: 16
+  height: 32
+  width: 32
+  decode: false         # metrics run on latents by default, which needs no
+                        # decoder. Pixel-only metrics (saturation, and the
+                        # absolute scale of sharpness) are then SKIPPED with a
+                        # recorded reason rather than reported wrong.
+
+  output_dir: runs/eval
+  save_samples: false
+  baseline_report: ""   # a previous report to diff against; the comparison
+                        # refuses if the pins differ

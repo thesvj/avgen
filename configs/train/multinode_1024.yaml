@@ -1,0 +1,119 @@
+# 128 nodes, 1024 GPUs — a 14B model on long, high-resolution clips.
+#
+# Parallelism choice, and why:
+#
+#   context = 8, tensor = 8, dp_replicate = 4, dp_shard = 4.
+#
+# Every axis is doing a specific job at this scale, and each was added only
+# after the previous one ran out:
+#
+#   context = 8   The sequence is 131k tokens. CP is the only axis that reduces
+#                 per-rank sequence length, and both activation memory and the
+#                 quadratic attention term scale with it. This is the first knob
+#                 and the most important one.
+#
+#   tensor = 8    Fits exactly inside one node's NVLink domain, which is a hard
+#                 constraint rather than a preference: TP communicates twice per
+#                 block on the critical path, and over an inter-node fabric that
+#                 is catastrophic rather than merely bad. With sequence
+#                 parallelism on, it also shards the norm and residual regions
+#                 along the sequence — which is where TP's activation-memory win
+#                 actually comes from.
+#
+#   dp_replicate  HSDP: shard within a group of 4, replicate across 4 groups.
+#   = 4           Above a few hundred GPUs a flat FSDP all-gather spans the slow
+#                 fabric on every block. HSDP keeps the expensive all-gather
+#                 inside a node and sends only a reduce-scatter between nodes.
+#
+#   dp_shard = 4  What is left: 1024 / (8 cp x 8 tp x 4 replicate).
+#
+# Pipeline stays at 1. Depth 48 would split cleanly, but pipeline's bubble costs
+# real throughput and its benefit only appears when depth alone is the
+# constraint — which it is not here, because FSDP + TP already fit the model.
+#
+# Verify before launching. Both of these run on a laptop in about a second:
+#   avgen simulate --config configs/train/multinode_1024.yaml \
+#       --world-size 1024 --topology
+#   avgen plan --world-size 1024 --seq-len 131072 --params 14e9 \
+#       --depth 48 --width 3328
+_base_:
+  - ../model/dit_14b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit14b-1024gpu
+output_dir: runs/dit14b-1024gpu
+seed: 0
+
+data:
+  buckets:
+    - name: long_hd
+      frames: 32
+      height: 90
+      width: 160          # 16:9 at 720p-class latent resolution
+      micro_batch_size: 1
+      weight: 1.0
+  shuffle_buffer: 16384
+  num_workers: 8
+  prefetch_batches: 4
+
+train:
+  steps: 500000
+  global_batch_size: 256  # dp_size 16 x micro 1 x accum 16
+  micro_batch_size: 1
+  lr: 4.0e-5              # lower than the 5B config: at this batch size and
+                          # width, the largest stable LR is smaller, and a
+                          # divergence 40k steps in costs days
+  weight_decay: 0.01
+  beta2: 0.95
+  max_grad_norm: 1.0
+  schedule: wsd
+  decay_ratio: 0.1
+  warmup_steps: 5000
+  timestep_sampler: shifted_logit_normal
+  base_shift: 0.5
+  max_shift: 1.15
+  base_seq_len: 256
+  max_seq_len: 131072
+  ema_decay: 0.9999
+  log_every: 100          # every metric sync costs a device synchronisation;
+                          # at 1024 ranks that serialises behind the slowest one
+  eval_every: 20000
+
+parallel:
+  dp_replicate: 4         # HSDP across node groups
+  dp_shard: -1            # 1024 / (4 x 8 x 8) = 4
+  context: 8
+  tensor: 8               # never larger than gpus_per_node
+  pipeline: 1
+  sequence_parallel: true # without it, TP saves weight memory but not
+                          # activation memory — and activations are the problem
+  gpus_per_node: 8
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+    save_op_frequency: 1
+  fsdp:
+    reshard_after_forward: true
+    shard_last_block_after_forward: false  # backward needs it immediately
+  compile_blocks: true
+  compile_mode: default   # max-autotune spends minutes searching per shape; on
+                          # a multi-bucket run that is paid per bucket
+
+checkpoint:
+  save_every: 1000        # at this scale a failure is expected, not exceptional
+  keep_last_n: 2
+  keep_every_n_steps: 20000
+  async_save: true
+  resume: latest          # restart into the same command and it picks up where
+                          # it stopped, data cursor included
+
+telemetry:
+  loggers: [console, jsonl]
+  log_every: 100
+  memory_report_every: 2000
+  profile_steps: 0        # a full trace of 1024 ranks is hundreds of GB; enable
+                          # deliberately, on rank 0, and never on step 0
+  profile_warmup: 10
+  report_mfu: true

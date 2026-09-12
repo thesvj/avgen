@@ -1,0 +1,98 @@
+# 8 nodes, 64 GPUs — a 5B model on long clips.
+#
+# Parallelism choice, and why:
+#
+#   context = 4, dp_shard = 16.
+#
+# This is the first config where context parallelism earns its place. At 65k
+# tokens the sequence, not the parameter count, is what does not fit:
+# activation memory is linear in sequence length and attention cost is
+# quadratic, and CP is the ONLY axis that reduces per-rank sequence length.
+# Four-way CP takes each rank down to 16k tokens, which fits comfortably.
+#
+# Still no tensor parallelism. TP would also cut activation memory (via sequence
+# parallelism on the norm and residual regions), but it communicates twice per
+# block on the critical path, and CP has already solved the memory problem. Add
+# TP when CP alone cannot, not before.
+#
+# FSDP shards across dp_shard AND cp — avgen flattens them into one `dp_shard_cp`
+# mesh, because CP ranks hold different tokens of the same sample and can
+# therefore also hold different parameter shards. Not flattening leaves the CP
+# dimension's memory saving on the table.
+#
+# Launch (per node):
+#   torchrun --nnodes 8 --nproc-per-node 8 --rdzv-backend c10d \
+#       --rdzv-endpoint $MASTER_ADDR:29500 \
+#       -m avgen.cli.main train --config configs/train/multinode_64.yaml
+_base_:
+  - ../model/dit_5b.yaml
+  - ../data/latent_shards_template.yaml
+
+run_name: dit5b-64gpu
+output_dir: runs/dit5b-64gpu
+seed: 0
+
+data:
+  buckets:
+    - name: long_720p
+      frames: 32
+      height: 64
+      width: 112          # ~16:9
+      micro_batch_size: 1
+      weight: 1.0
+  shuffle_buffer: 8192
+  num_workers: 8
+
+train:
+  steps: 300000
+  global_batch_size: 64   # dp_size 16 x micro 1 x accum 4
+  micro_batch_size: 1
+  lr: 6.0e-5
+  weight_decay: 0.01
+  beta2: 0.95
+  max_grad_norm: 1.0
+  schedule: wsd           # warmup-stable-decay: the stable phase can be
+                          # extended or cut without invalidating the schedule,
+                          # which matters when the step budget is not known in
+                          # advance
+  decay_ratio: 0.1
+  warmup_steps: 3000
+  timestep_sampler: shifted_logit_normal
+  base_shift: 0.5
+  max_shift: 1.15
+  base_seq_len: 256
+  max_seq_len: 65536      # the shift is interpolated to here; a schedule
+                          # calibrated at 4k trains long clips badly
+  ema_decay: 0.9999
+  log_every: 50
+  eval_every: 10000
+
+parallel:
+  dp_replicate: 1
+  dp_shard: -1            # 64 / (context 4) = 16
+  context: 4
+  tensor: 1
+  pipeline: 1
+  gpus_per_node: 8
+  precision:
+    param_dtype: bfloat16
+    reduce_dtype: float32
+  activation:
+    mode: selective_op
+    save_op_frequency: 1
+  fsdp:
+    reshard_after_forward: true
+  compile_blocks: true
+
+checkpoint:
+  save_every: 2000
+  keep_last_n: 2          # a 5B DCP checkpoint is large; keep fewer and rely
+                          # on keep_every_n_steps for the trajectory
+  keep_every_n_steps: 20000
+  async_save: true
+
+telemetry:
+  loggers: [console, jsonl]
+  log_every: 50
+  memory_report_every: 1000
+  report_mfu: true

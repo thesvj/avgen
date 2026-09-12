@@ -1,0 +1,162 @@
+name: Bug report
+description: Something in avgen behaves incorrectly.
+title: "[bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A distributed training bug is not reproducible without the version, the
+        world size, the parallelism degrees, and the config. Every one of those
+        is required below — please do not replace them with "the usual setup".
+
+        Security problems do **not** belong here. Report them privately:
+        https://github.com/thesvj/avgen/security/advisories/new
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Preflight
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I reproduced this on the latest release or on `main`.
+          required: true
+        - label: I read the troubleshooting guide.
+          required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: >-
+        What you expected, what you got, and the full traceback or error output.
+        For a NCCL or hang failure, include the stack from **all** ranks if you
+        have it, or say which rank you captured.
+      placeholder: |
+        Expected: training resumes from step 12000 with the same loss.
+        Got: loss jumps from 0.31 to 0.58 on the first step after resume.
+
+        Traceback (most recent call last):
+        ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The exact command, including the launcher and every override.
+      render: shell
+      placeholder: |
+        torchrun --nnodes 8 --nproc-per-node 8 \
+          -m avgen.cli.main train --config configs/train/multinode_512.yaml \
+          parallel.context=8 train.lr=1e-4
+    validations:
+      required: true
+
+  - type: input
+    id: avgen-version
+    attributes:
+      label: avgen version
+      description: >-
+        `python -c "import avgen; print(avgen.__version__)"`, or the commit SHA
+        if you are running from a checkout.
+      placeholder: "0.1.0 (or commit a1b2c3d)"
+    validations:
+      required: true
+
+  - type: input
+    id: torch-version
+    attributes:
+      label: torch version and build
+      description: >-
+        `python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.nccl.version())"`
+      placeholder: "2.6.0+cu124, cuda 12.4, nccl (2, 21, 5)"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU model and count per node
+      description: >-
+        Model, memory, and how many per node. `nvidia-smi -L` is enough.
+      placeholder: "8x H100 SXM 80GB per node"
+    validations:
+      required: true
+
+  - type: input
+    id: world-size
+    attributes:
+      label: World size and node count
+      description: Total ranks, and how many nodes they are spread over.
+      placeholder: "512 ranks across 64 nodes"
+    validations:
+      required: true
+
+  - type: input
+    id: parallelism
+    attributes:
+      label: Parallelism degrees
+      description: >-
+        All five axes. `ParallelDims.describe()` prints them, and it is in the
+        first lines of the training log.
+      placeholder: "dp_replicate=1 dp_shard=8 cp=8 tp=8 pp=1"
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Exact config
+      description: >-
+        The resolved config, not the path. avgen writes it to the run directory
+        as `config.resolved.yaml`; paste that, with any private paths redacted.
+        Include the CLI overrides you passed.
+      render: yaml
+    validations:
+      required: true
+
+  - type: dropdown
+    id: reproducible-smaller
+    attributes:
+      label: Does it reproduce at a smaller scale?
+      description: >-
+        The single most useful triage signal. "Single GPU" turns a cluster bug
+        into a debuggable one.
+      options:
+        - "Yes — reproduces on a single GPU"
+        - "Yes — reproduces on one node"
+        - "No — only at multi-node scale"
+        - "Not tried"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment details
+      description: >-
+        OS, Python version, install method (uv / pip / container image), driver
+        version, interconnect (NVLink + InfiniBand NDR, RoCE, PCIe only), and
+        any NCCL environment variables you set.
+      render: shell
+      placeholder: |
+        Ubuntu 22.04, Python 3.12.7, uv sync --all-extras
+        driver 550.90.07
+        NVLink 4 intra-node, InfiniBand NDR 400G inter-node
+        NCCL_IB_HCA=mlx5, NCCL_DEBUG=WARN
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: >-
+        Simulator output for the plan (`make simulate` or `avgen plan ...`),
+        the loss curve around the failure, flight-recorder dumps, profiler
+        traces, screenshots.
+    validations:
+      required: false

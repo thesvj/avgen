@@ -1,0 +1,72 @@
+version: 2
+
+updates:
+  # Python dependencies. Grouped so that a routine week produces one pull
+  # request to review instead of a dozen, and so that a torch bump — which can
+  # change numerics, kernel selection, and distributed behaviour — always
+  # arrives on its own where it can be looked at properly.
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "python"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+    groups:
+      dev-tooling:
+        patterns:
+          - "ruff"
+          - "mypy"
+          - "pytest*"
+          - "pre-commit"
+          - "coverage*"
+        update-types:
+          - "minor"
+          - "patch"
+      docs:
+        patterns:
+          - "mkdocs*"
+          - "mkdocstrings*"
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # torch is pinned by the training stack, not by Dependabot. A major bump
+      # is a big decision: it moves NCCL, the DTensor API surface, and
+      # kernel selection all at once.
+      - dependency-name: "torch"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "torchao"
+        update-types:
+          - "version-update:semver-major"
+      - dependency-name: "torchft"
+        update-types:
+          - "version-update:semver-major"
+
+  # Workflow actions. Kept current because a stale action is the most common
+  # way a supply-chain problem reaches a repository.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Etc/UTC"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns:
+          - "*"

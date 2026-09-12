@@ -1,0 +1,59 @@
+# Smoke test — a complete run on a CPU in seconds.
+#
+# Every avgen change should be verifiable without a GPU, a dataset, or a
+# download. This config exists so that "does the whole pipeline still work" is a
+# ten-second question:
+#
+#   avgen train --config configs/train/smoke_cpu.yaml
+#
+# Parallelism: none. A single device needs no mesh, and avgen builds none — a
+# degenerate mesh dimension of size 1 costs a process group and buys nothing.
+_base_:
+  - ../model/tiny.yaml
+  - ../data/synthetic.yaml
+
+run_name: smoke-cpu
+output_dir: runs/smoke-cpu
+seed: 0
+
+train:
+  steps: 20
+  global_batch_size: 2
+  micro_batch_size: 2
+  lr: 1.0e-4
+  warmup_steps: 2
+  schedule: constant    # 20 steps is not enough for a decay schedule to mean
+                        # anything; a constant LR makes the smoke run's loss
+                        # curve interpretable
+  max_grad_norm: 1.0
+  ema_decay: 0.0        # an EMA over 20 steps is the initialisation
+  log_every: 5
+  base_seq_len: 64
+  max_seq_len: 256
+
+parallel:
+  precision:
+    param_dtype: float32   # CPU bf16 matmuls are slow and, on some builds,
+                           # unimplemented; fp32 keeps the smoke test portable
+    reduce_dtype: float32
+  activation:
+    mode: none             # nothing to save at this size, and recomputation
+                           # would only slow the test down
+
+checkpoint:
+  save_every: 0            # nothing worth keeping
+  save_config: true        # still exercised, because the round trip is part of
+                           # what this test verifies
+
+telemetry:
+  loggers: [console]
+  log_every: 5
+
+eval:
+  metrics: [temporal_consistency, motion_magnitude, static_frames]
+  steps: 4
+  guidance: 1.0            # no guidance: halves the cost by skipping the
+                           # unconditional branch
+  frames: 8
+  height: 16
+  width: 16

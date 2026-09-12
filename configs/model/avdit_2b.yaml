@@ -1,0 +1,29 @@
+# 2B audio-video DiT — joint video and audio generation.
+#
+# The audio tower is narrower than the video one on purpose: audio latents carry
+# far fewer tokens and far less spatial structure, and matching the widths
+# spends parameters on a stream that does not need them. The fusion happens in
+# the shared blocks, which attend over the concatenated sequence — so the
+# quadratic attention term is a function of video + audio tokens together, and
+# pricing the two streams separately understates it.
+#
+# An AV model requires data.audio_frames > 0. The schema refuses the
+# combination of an audio tower with a video-only batch, because the audio
+# branch would train on empty tensors while the video loss looked fine.
+model:
+  name: av_dit
+  depth: 32
+  width: 1536
+  num_heads: 12
+  mlp_ratio: 4
+  patch_frames: 1
+  patch_height: 2
+  patch_width: 2
+  in_channels: 16
+  audio_width: 768      # > 0 selects the audio tower
+  cross_attention: true
+  rope_theta: 10000.0
+
+data:
+  audio_frames: 400     # must be non-zero for an AV model
+  audio_channels: 8

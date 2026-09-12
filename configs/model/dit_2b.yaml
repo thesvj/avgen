@@ -1,0 +1,18 @@
+# 2B video DiT — the workhorse size.
+#
+# Width and depth are chosen so that: width/num_heads = 128 (kernel-friendly
+# head dim), width is divisible by 8 for tensor parallelism inside a node, and
+# depth is divisible by 2, 4, and 8 so pipeline parallelism has clean splits if
+# it is ever needed.
+model:
+  name: video_dit
+  depth: 32
+  width: 1536
+  num_heads: 12         # 128 dims per head
+  mlp_ratio: 4
+  patch_frames: 1
+  patch_height: 2
+  patch_width: 2
+  in_channels: 16
+  cross_attention: true
+  rope_theta: 10000.0
